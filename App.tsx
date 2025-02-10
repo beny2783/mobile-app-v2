@@ -5,24 +5,44 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { RootStackParamList } from './src/navigation/types';
 import AuthScreen from './src/screens/AuthScreen';
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { TabNavigator } from './src/navigation/TabNavigator';
+import { setupErrorHandling } from './src/utils/errorHandling';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export default function App() {
+function Navigation() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return null; // Or a loading spinner
+  }
+
   return (
-    <NavigationContainer>
-      <View style={styles.container}>
-        <StatusBar style="auto" />
-        <Stack.Navigator>
-          {/* We need at least one screen */}
-          <Stack.Screen 
-            name="Auth" 
-            component={AuthScreen} 
-            options={{ headerShown: false }}
-          />
-        </Stack.Navigator>
-      </View>
-    </NavigationContainer>
+    <Stack.Navigator>
+      {!user ? (
+        <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
+      ) : (
+        <Stack.Screen name="AppTabs" component={TabNavigator} options={{ headerShown: false }} />
+      )}
+    </Stack.Navigator>
+  );
+}
+
+export default function App() {
+  if (__DEV__) {
+    setupErrorHandling();
+  }
+
+  return (
+    <AuthProvider>
+      <NavigationContainer>
+        <View style={styles.container}>
+          <StatusBar style="auto" />
+          <Navigation />
+        </View>
+      </NavigationContainer>
+    </AuthProvider>
   );
 }
 
@@ -30,5 +50,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    width: '100%',
+    height: '100%',
   },
-}); 
+});

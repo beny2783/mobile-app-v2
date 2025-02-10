@@ -1,20 +1,22 @@
 # Spending Tracker App - Development Progress
 
 ## 🚀 Phase 1: Project Setup & Authentication
+
 - [x] Initialize React Native Expo project with TypeScript
 - [x] Set up ESLint, Prettier, and Husky
-- [ ] Configure GitHub repository and CI/CD
-- [ ] Set up Supabase project
-- [ ] Implement basic project structure
+- [x] Configure GitHub repository and CI/CD
+- [x] Set up Supabase project
+- [x] Implement basic project structure
 - [ ] Create authentication flows
-  - [ ] Google Sign-in integration
-  - [ ] Authentication state management
-  - [ ] Protected routes
-  - [ ] Profile management
+  - [x] Google Sign-in integration
+  - [x] Authentication state management
+  - [x] Protected routes
+  - [x] Profile management
 
 ## 🏦 Phase 2: Bank Integration
+
 - [ ] Set up TrueLayer integration
-  - [ ] Configure OAuth flow
+  - [x] Configure OAuth flow
   - [ ] Implement bank connection UI
   - [ ] Handle token management
 - [ ] Implement bank account management
@@ -24,6 +26,7 @@
   - [ ] Handle disconnection
 
 ## 💰 Phase 3: Transaction Management
+
 - [ ] Set up transaction fetching
   - [ ] Initial sync with banks
   - [ ] Background refresh
@@ -35,6 +38,7 @@
   - [ ] Basic transaction details
 
 ## 🔍 Phase 4: Transaction Features
+
 - [ ] Implement transaction filtering
   - [ ] Date range filters
   - [ ] Category filters
@@ -46,6 +50,7 @@
   - [ ] Auto-categorization
 
 ## ⚙️ Phase 5: Settings & Polish
+
 - [ ] Settings screen
   - [ ] Account management
   - [ ] Preferences
@@ -60,6 +65,7 @@
   - [ ] Load time improvements
 
 ## 🧪 Testing & Documentation
+
 - [ ] Unit tests
 - [ ] Integration tests
 - [ ] E2E tests
@@ -67,6 +73,7 @@
 - [ ] User documentation
 
 ## 📱 Release Preparation
+
 - [ ] App Store screenshots
 - [ ] App Store description
 - [ ] Privacy policy
@@ -78,5 +85,11 @@
 ---
 
 ## Completed Items
+
 - 2024-02-10: Project initialized with TypeScript and Expo
-- 2024-02-10: ESLint, Prettier, and Husky configured 
+- 2024-02-10: ESLint, Prettier, and Husky configured
+- 2024-02-10: GitHub repository configured and initial codebase pushed
+- 2024-02-10: Supabase project setup and configured
+- 2024-02-10: Basic project structure implemented with key directories and navigation setup
+- 2024-02-10: Authentication implemented with Google Sign-in and protected routes
+- 2024-02-10: TrueLayer OAuth flow configured and tested with sandbox environment
