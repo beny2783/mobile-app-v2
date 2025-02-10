@@ -79,5 +79,4 @@
 
 ## Completed Items
 - 2024-02-10: Project initialized with TypeScript and Expo
-- 2024-02-10: ESLint, Prettier, and Husky configured
-- 2024-02-10: GitHub repository and CI/CD configured 
+- 2024-02-10: ESLint, Prettier, and Husky configured 
