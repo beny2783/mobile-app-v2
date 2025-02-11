@@ -1,15 +1,18 @@
 # Spending Tracker App - Technical Requirements
 
 ## Overview
+
 The Spending Tracker App is a React Native mobile app that helps users track their spending by linking their Monzo, HSBC, and Amex accounts via TrueLayer. The app will fetch transactions, categorize spending, and store data in Supabase.
 
 ## Objectives
+
 - Securely connect bank accounts (Monzo, HSBC, Amex)
 - Fetch transactions automatically
 - Categorize spending for better tracking
 - Provide insights later (graphs in a future update)
 
 ## Target Audience
+
 - People managing multiple bank accounts
 - Users who want automatic spending logs
 - Budget-conscious individuals
@@ -17,15 +20,18 @@ The Spending Tracker App is a React Native mobile app that helps users track the
 ## Core Features & Implementation Order
 
 ### 1. Authentication (P0)
-**User Story:** *As a user, I want to sign in with my Google account so my spending data is securely stored.*
+
+**User Story:** _As a user, I want to sign in with my Google account so my spending data is securely stored._
 
 **Technical Requirements:**
+
 - Implement Supabase Auth with Google Sign-In
 - Store user profile in Supabase
 - Persist authentication state using SecureStore
 - Handle sign-out flow
 
 **Data Model:**
+
 ```sql
 -- profiles table
 create table profiles (
@@ -46,15 +52,18 @@ create policy "Users can update own profile" on profiles
 ```
 
 ### 2. Bank Connection (P0)
-**User Story:** *As a user, I want to connect my bank accounts so I can track spending automatically.*
+
+**User Story:** _As a user, I want to connect my bank accounts so I can track spending automatically._
 
 **Technical Requirements:**
+
 - Implement TrueLayer OAuth flow
 - Support connecting multiple banks (Monzo, HSBC, Amex)
 - Securely store access tokens in Supabase
 - Handle token refresh and expiry
 
 **Data Model:**
+
 ```sql
 -- bank_connections table
 create table bank_connections (
@@ -87,36 +96,39 @@ alter table bank_connections enable row level security;
 alter table bank_accounts enable row level security;
 
 -- Policies for bank_connections
-create policy "Users can read their own bank connections" 
+create policy "Users can read their own bank connections"
   on bank_connections for select using (auth.uid() = user_id);
 
-create policy "Users can insert their own bank connections" 
+create policy "Users can insert their own bank connections"
   on bank_connections for insert with check (auth.uid() = user_id);
 
-create policy "Users can update their own bank connections" 
+create policy "Users can update their own bank connections"
   on bank_connections for update using (auth.uid() = user_id);
 
 -- Policies for bank_accounts
-create policy "Users can read their own bank accounts" 
+create policy "Users can read their own bank accounts"
   on bank_accounts for select using (auth.uid() = user_id);
 
-create policy "Users can insert their own bank accounts" 
+create policy "Users can insert their own bank accounts"
   on bank_accounts for insert with check (auth.uid() = user_id);
 
-create policy "Users can update their own bank accounts" 
+create policy "Users can update their own bank accounts"
   on bank_accounts for update using (auth.uid() = user_id);
 ```
 
 ### 3. Transaction Management (P0)
-**User Story:** *As a user, I want to see my transactions categorized by type.*
+
+**User Story:** _As a user, I want to see my transactions categorized by type._
 
 **Technical Requirements:**
+
 - Fetch transactions via TrueLayer API
 - Store in Supabase with proper indexing
 - Implement real-time updates using Supabase subscriptions
 - Handle pagination for large transaction sets
 
 **Data Model:**
+
 ```sql
 -- transactions table
 create table transactions (
@@ -133,7 +145,7 @@ create table transactions (
   status varchar not null,
   created_at timestamptz not null default timezone('utc'::text, now()),
   updated_at timestamptz not null default timezone('utc'::text, now()),
-  
+
   -- Ensure unique transaction per account
   unique(account_id, transaction_id)
 );
@@ -152,59 +164,51 @@ create policy "Users can update their own transactions"
   on transactions for update using (auth.uid() = user_id);
 
 -- Indexes for common queries
-create index idx_transactions_user_date 
+create index idx_transactions_user_date
   on transactions(user_id, transaction_date desc);
 
-create index idx_transactions_account 
+create index idx_transactions_account
   on transactions(account_id, transaction_date desc);
 
-create index idx_transactions_category 
+create index idx_transactions_category
   on transactions(user_id, category);
 
-create index idx_transactions_search 
+create index idx_transactions_search
   on transactions using gin(to_tsvector('english', description || ' ' || merchant_name));
 ```
 
 ### 4. Transaction Filtering (P1)
-**User Story:** *As a user, I want to filter and search my transactions.*
+
+**User Story:** _As a user, I want to filter and search my transactions._
 
 **Technical Requirements:**
-- Full-text search across description and merchant
-- Date range filtering
-- Category and account filtering
-- Amount range filtering
-- Multi-currency support
 
-**Example Queries:**
-```sql
--- Full text search
-select * from transactions
-where user_id = auth.uid()
-  and to_tsvector('english', description || ' ' || merchant_name) @@ to_tsquery('english', 'coffee & shop');
+- ✅ Full-text search across description and merchant
+- ✅ Date range filtering (7, 30, 90 days)
+- ✅ Category filtering with horizontal scrolling buttons
+- ✅ Amount display with currency support
+- ✅ Group transactions by date with daily totals
+- ✅ Visual indicators for income/expenses
 
--- Date and category filtering
-select t.*, ba.account_name
-from transactions t
-join bank_accounts ba on t.account_id = ba.id
-where t.user_id = auth.uid()
-  and t.transaction_date between $1 and $2
-  and t.category = $3
-order by t.transaction_date desc
-limit 50;
+**UI Components:**
 
--- Amount range in specific currency
-select *
-from transactions
-where user_id = auth.uid()
-  and currency = 'GBP'
-  and amount between -100 and -50
-order by transaction_date desc;
-```
+- Search bar for transaction filtering
+- Date range quick filters (7, 30, 90 days)
+- Horizontal scrolling category filter buttons
+- Transaction list with:
+  - Daily sections and totals
+  - Transaction cards showing:
+    - Merchant name/description
+    - Category
+    - Amount with color coding
+    - Date
 
 ### 5. Settings & Account Management (P1)
-**User Story:** *As a user, I want to manage my connected accounts.*
+
+**User Story:** _As a user, I want to manage my connected accounts._
 
 **Technical Requirements:**
+
 - View connected banks
 - Disconnect individual banks
 - Manage user profile
@@ -213,6 +217,7 @@ order by transaction_date desc;
 ## Technical Architecture
 
 ### Frontend (React Native)
+
 - **State Management:** Zustand
 - **Navigation:** React Navigation
 - **UI Components:** Native Base
@@ -220,6 +225,7 @@ order by transaction_date desc;
 - **Date Handling:** date-fns
 
 ### Backend Services
+
 - **Authentication:** Supabase Auth
 - **Database:** Supabase (PostgreSQL)
 - **Banking API:** TrueLayer
@@ -227,6 +233,7 @@ order by transaction_date desc;
 - **Real-time:** Supabase Realtime
 
 ### Testing Requirements
+
 - Unit tests for all business logic
 - Integration tests for API flows
 - E2E tests for critical user journeys
@@ -234,6 +241,7 @@ order by transaction_date desc;
 - Test Supabase interactions using test database
 
 ## Security Requirements
+
 - Secure token storage using SecureStore
 - Row Level Security (RLS) policies in Supabase
 - API key protection
@@ -243,6 +251,7 @@ order by transaction_date desc;
 - Data encryption at rest (handled by Supabase)
 
 ## Error States to Handle
+
 - Network failures
 - Authentication errors
 - API rate limits
@@ -252,6 +261,7 @@ order by transaction_date desc;
 - Database connection issues
 
 ## Performance Requirements
+
 - App load < 2s
 - Transaction list smooth scroll
 - Offline support using local SQLite
@@ -260,15 +270,17 @@ order by transaction_date desc;
 - Efficient PostgreSQL queries
 
 ## Future Considerations (Not MVP)
+
 🚀 Spending analytics using PostgreSQL aggregations
 🚀 Budget tracking with notifications
 🚀 Push notifications via Supabase Edge Functions
 🚀 Export functionality using PostgreSQL CSV export
 
 ## Development Environment
+
 - React Native Expo
 - TypeScript
 - ESLint + Prettier
 - Husky pre-commit hooks
 - GitHub Actions CI/CD
-- Supabase CLI for local development 
+- Supabase CLI for local development
