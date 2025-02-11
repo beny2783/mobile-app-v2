@@ -15,7 +15,7 @@ serve(async (req: Request) => {
 
   try {
     if (req.method === 'POST') {
-      const { access_token, from_date, to_date } = await req.json();
+      const { access_token } = await req.json();
 
       if (!access_token) {
         return new Response(JSON.stringify({ error: 'Access token is required' }), {
@@ -32,16 +32,8 @@ serve(async (req: Request) => {
       });
 
       const accountsData = await accountsResponse.json();
-
-      if (!accountsResponse.ok) {
-        return new Response(JSON.stringify(accountsData), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: accountsResponse.status,
-        });
-      }
-
-      // Get transactions for each account
       const transactions = [];
+
       for (const account of accountsData.results) {
         const transactionsResponse = await fetch(
           `https://api.truelayer-sandbox.com/data/v1/accounts/${account.account_id}/transactions`,
@@ -53,9 +45,15 @@ serve(async (req: Request) => {
         );
 
         const transactionsData = await transactionsResponse.json();
+
+        // Log transaction structure
+        console.log('📝 TrueLayer transaction:', {
+          sample: transactionsData.results[0],
+          keys: Object.keys(transactionsData.results[0]),
+        });
+
         if (transactionsResponse.ok) {
-          // Add account_id to each transaction
-          const accountTransactions = transactionsData.results.map((t) => ({
+          const accountTransactions = transactionsData.results.map((t: any) => ({
             ...t,
             account_id: account.account_id,
           }));

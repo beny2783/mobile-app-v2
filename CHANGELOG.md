@@ -15,7 +15,7 @@
 
 ## 🏦 Phase 2: Bank Integration
 
-- [ ] Set up TrueLayer integration
+- [x] Set up TrueLayer integration
   - [x] Configure OAuth flow
   - [x] Implement bank connection UI
   - [x] Handle token management
@@ -30,30 +30,35 @@
 
 ## 💰 Phase 3: Transaction Management
 
-- [ ] Set up transaction fetching
-  - [ ] Initial sync with banks
-  - [ ] Background refresh
-  - [ ] Pagination handling
-- [ ] Transaction list view
-  - [ ] Transaction card design
-  - [ ] Pull to refresh
-  - [ ] Infinite scroll
-  - [ ] Basic transaction details
+- [x] Set up transaction fetching
+  - [x] Initial sync with banks
+  - [x] Background refresh
+  - [x] Error handling
+- [x] Transaction list view
+  - [x] Transaction card design
+  - [x] Pull to refresh
+  - [x] Basic transaction details
+  - [x] Daily totals and grouping
 - [x] Transaction fetching from TrueLayer API
-- [x] Transaction list view with date filtering
 - [x] Transaction caching in Supabase
+- [x] Transaction categorization
+  - [x] Auto-categorization system
+  - [x] Predefined categories (Bills, Transport, Shopping, etc.)
+  - [x] Merchant pattern matching
+  - [ ] Custom user categories
 
 ## 🔍 Phase 4: Transaction Features
 
-- [ ] Implement transaction filtering
-  - [ ] Date range filters
-  - [ ] Category filters
-  - [ ] Amount range filters
-  - [ ] Search functionality
-- [ ] Transaction categorization
-  - [ ] Category assignment
-  - [ ] Category management
-  - [ ] Auto-categorization
+- [x] Implement transaction filtering
+  - [x] Date range filters (7, 30, 90 days)
+  - [x] Category filters with horizontal scrolling
+  - [x] Search functionality
+  - [x] Amount display with currency
+- [x] Transaction UI improvements
+  - [x] Color-coded amounts (red/green)
+  - [x] Category labels
+  - [x] Daily section headers with totals
+  - [x] Clean transaction card design
 
 ## ⚙️ Phase 5: Settings & Polish
 
@@ -61,14 +66,6 @@
   - [ ] Account management
   - [ ] Preferences
   - [ ] Notification settings
-- [ ] Error handling
-  - [ ] Error boundaries
-  - [ ] Offline support
-  - [ ] Loading states
-- [ ] Performance optimization
-  - [ ] Query optimization
-  - [ ] Cache management
-  - [ ] Load time improvements
 
 ## 🧪 Testing & Documentation
 

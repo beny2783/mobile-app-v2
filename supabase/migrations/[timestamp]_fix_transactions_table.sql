@@ -1,14 +1,17 @@
+-- Drop and recreate the transactions table with proper defaults
+drop table if exists transactions;
+
 create table public.transactions (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references auth.users(id) not null,
   transaction_id text not null,
-  account_id text not null,
+  account_id text not null default 'default',
   timestamp timestamptz not null,
   description text not null,
   amount decimal not null,
   currency text not null,
   transaction_type text,
-  transaction_category text,
+  transaction_category text default 'Uncategorized',
   merchant_name text,
   created_at timestamptz default now() not null,
   

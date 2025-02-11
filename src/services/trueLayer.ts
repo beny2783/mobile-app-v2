@@ -11,12 +11,13 @@ interface TrueLayerConfig {
 
 interface Transaction {
   transaction_id: string;
+  account_id?: string;
   timestamp: string;
   description: string;
   amount: number;
   currency: string;
   transaction_type: string;
-  transaction_category: string;
+  transaction_category?: string;
   merchant_name?: string;
 }
 
@@ -25,6 +26,7 @@ export class TrueLayerService {
   private baseUrl: string;
   private loginUrl: string;
   private encryption: EncryptionService;
+  private categoriesLogged = false;
 
   constructor(config: TrueLayerConfig) {
     this.config = config;
@@ -272,75 +274,62 @@ export class TrueLayerService {
 
   async fetchTransactions(fromDate?: Date, toDate?: Date): Promise<Transaction[]> {
     try {
-      console.log('🔄 Getting transactions...');
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('No authenticated user found');
 
-      // Try to get from cache first
-      const { data: cachedTransactions, error: cacheError } = await supabase
-        .from('transactions')
-        .select('*')
-        .gte('timestamp', fromDate?.toISOString() || '1970-01-01')
-        .lte('timestamp', toDate?.toISOString() || new Date().toISOString())
-        .order('timestamp', { ascending: false });
-
-      if (cacheError) {
-        console.error('�� Cache fetch failed:', cacheError);
-      } else if (cachedTransactions?.length) {
-        console.log('✅ Found cached transactions:', cachedTransactions.length);
-        return cachedTransactions;
-      }
-
-      // If cache miss or error, fetch from TrueLayer
-      console.log('🔄 Cache miss, fetching from TrueLayer...');
+      // Get fresh data from API
+      console.log('🔄 Fetching transactions from API...');
       const freshTransactions = await this.fetchTransactionsFromAPI(fromDate, toDate);
 
-      // Update cache in background
-      this.updateTransactionCache(freshTransactions).catch((error) => {
-        console.error('💥 Cache update failed:', error);
+      // Get merchant categories (both system-wide and user-specific)
+      const { data: categories } = await supabase
+        .from('merchant_categories')
+        .select('merchant_pattern, category')
+        .or(`user_id.is.null,user_id.eq.${user.id}`);
+
+      // Transform and categorize transactions
+      const transformedTransactions = freshTransactions.map((t) => {
+        // Find matching category
+        const searchText = `${t.description} ${t.merchant_name || ''}`.toUpperCase();
+        const matchingCategory = categories?.find((cat) =>
+          searchText.includes(cat.merchant_pattern.toUpperCase())
+        );
+
+        return {
+          user_id: user.id,
+          transaction_id: t.transaction_id,
+          account_id: t.account_id || 'default',
+          timestamp: new Date(t.timestamp).toISOString(),
+          description: t.description,
+          amount: t.amount,
+          currency: t.currency,
+          transaction_type: t.transaction_type,
+          transaction_category: matchingCategory?.category || 'Uncategorized',
+          merchant_name: t.merchant_name || null,
+        };
       });
 
-      return freshTransactions;
+      // Store in database
+      const { error: insertError } = await supabase
+        .from('transactions')
+        .upsert(transformedTransactions, {
+          onConflict: 'user_id,transaction_id',
+          ignoreDuplicates: true,
+        });
+
+      if (insertError) {
+        console.error('💥 Failed to store transactions:', insertError);
+        return freshTransactions;
+      }
+
+      return transformedTransactions;
     } catch (error) {
       console.error('💥 Failed to fetch transactions:', error);
       throw error;
     }
-  }
-
-  private async updateTransactionCache(transactions: Transaction[]) {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      throw new Error('No authenticated user found');
-    }
-
-    // Prepare transactions for insert
-    const transactionsToInsert = transactions.map((t) => ({
-      user_id: user.id,
-      transaction_id: t.transaction_id,
-      account_id: t.account_id,
-      timestamp: t.timestamp,
-      description: t.description,
-      amount: t.amount,
-      currency: t.currency,
-      transaction_type: t.transaction_type,
-      transaction_category: t.transaction_category,
-      merchant_name: t.merchant_name,
-    }));
-
-    // Use upsert to handle duplicates
-    const { error } = await supabase.from('transactions').upsert(transactionsToInsert, {
-      onConflict: 'user_id,transaction_id',
-      ignoreDuplicates: true,
-    });
-
-    if (error) {
-      console.error('💥 Failed to cache transactions:', error);
-      throw error;
-    }
-
-    console.log('✅ Cached transactions:', transactionsToInsert.length);
   }
 
   // Rename current fetchTransactions to fetchTransactionsFromAPI
@@ -381,13 +370,30 @@ export class TrueLayerService {
 
       const { transactions } = await response.json();
 
-      // Transform transactions to include account_id
-      const transformedTransactions = transactions.map((t) => ({
-        ...t,
-        account_id: t.account_id || t.account?.account_id || 'default', // Fallback if not provided
+      // Log raw transaction structure
+      console.log('📝 Raw transaction from API:', {
+        sample: transactions[0],
+        keys: Object.keys(transactions[0]),
+      });
+
+      // Transform transactions to match our schema
+      const transformedTransactions = transactions.map((t: any) => ({
+        transaction_id: t.transaction_id,
+        account_id: t.account_id || t.account?.account_id || 'default',
+        timestamp: t.timestamp,
+        description: t.description,
+        amount: typeof t.amount === 'string' ? parseFloat(t.amount) : t.amount,
+        currency: t.currency,
+        transaction_type: t.transaction_type,
+        transaction_category: t.transaction_category || 'Uncategorized',
+        merchant_name: t.merchant_name,
       }));
 
-      console.log('✅ Fetched transactions:', transformedTransactions.length);
+      console.log('✅ Transformed transaction:', {
+        sample: transformedTransactions[0],
+        total: transformedTransactions.length,
+      });
+
       return transformedTransactions;
     } catch (error) {
       console.error('💥 Failed to fetch transactions:', error);
