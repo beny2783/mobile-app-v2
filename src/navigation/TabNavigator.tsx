@@ -64,8 +64,8 @@ export function TabNavigator() {
         name="Callback"
         component={CallbackScreen}
         options={{
-          tabBarButton: () => null, // Hide from tab bar
-          headerShown: false,
+          tabBarButton: () => null,
+          tabBarStyle: { display: 'none' },
         }}
       />
     </Tab.Navigator>

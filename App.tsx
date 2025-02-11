@@ -8,6 +8,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { TabNavigator } from './src/navigation/TabNavigator';
 import { setupErrorHandling } from './src/utils/errorHandling';
+import { linking } from './src/navigation/linking';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -36,7 +37,7 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <NavigationContainer>
+      <NavigationContainer linking={linking}>
         <View style={styles.container}>
           <StatusBar style="auto" />
           <Navigation />

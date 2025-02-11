@@ -11,9 +11,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourcompany.spendingtracker"
@@ -24,15 +22,12 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.yourcompany.spendingtracker",
-      "permissions": [
-        "DETECT_SCREEN_CAPTURE"
-      ]
+      "permissions": ["DETECT_SCREEN_CAPTURE"]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "webpack"
     },
-    "plugins": [
-      "expo-secure-store"
-    ]
+    "plugins": ["expo-secure-store"]
   }
-} 
+}

@@ -7,7 +7,7 @@
 - [x] Configure GitHub repository and CI/CD
 - [x] Set up Supabase project
 - [x] Implement basic project structure
-- [ ] Create authentication flows
+- [x] Create authentication flows
   - [x] Google Sign-in integration
   - [x] Authentication state management
   - [x] Protected routes
@@ -17,8 +17,11 @@
 
 - [ ] Set up TrueLayer integration
   - [x] Configure OAuth flow
-  - [ ] Implement bank connection UI
-  - [ ] Handle token management
+  - [x] Implement bank connection UI
+  - [x] Handle token management
+  - [x] Token encryption/decryption
+  - [x] Token storage in Supabase
+  - [ ] Token refresh mechanism
 - [ ] Implement bank account management
   - [ ] Connect multiple banks
   - [ ] View connected accounts
@@ -93,3 +96,6 @@
 - 2024-02-10: Basic project structure implemented with key directories and navigation setup
 - 2024-02-10: Authentication implemented with Google Sign-in and protected routes
 - 2024-02-10: TrueLayer OAuth flow configured and tested with sandbox environment
+- 2024-02-11: Bank connection UI implemented with status indicators and error handling
+- 2024-02-11: Token management system implemented with encryption and secure storage
+- 2024-02-11: Successful end-to-end bank connection flow with TrueLayer sandbox

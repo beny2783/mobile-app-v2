@@ -79,7 +79,7 @@ export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
     <View style={styles.container}>
       <View style={styles.card}>
         <View style={styles.header}>
-          <Ionicons name="bank-outline" size={24} color={colors.primary} />
+          <Ionicons name="wallet-outline" size={24} color={colors.primary} />
           <Text style={styles.title}>Connect Your Bank</Text>
         </View>
 
