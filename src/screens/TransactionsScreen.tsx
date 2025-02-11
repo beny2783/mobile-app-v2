@@ -57,16 +57,14 @@ export default function TransactionsScreen() {
       setError(null);
       setLoading(true);
 
-      console.log('🔄 Fetching transactions...', {
-        from: dateRange.from.toISOString(),
-        to: dateRange.to.toISOString(),
+      const data = await trueLayer.fetchAllTransactions({
+        from: dateRange.from,
+        to: dateRange.to,
       });
 
-      const data = await trueLayer.fetchTransactions(dateRange.from, dateRange.to);
-      console.log('✅ Fetch complete:', data.length, 'transactions');
       setTransactions(data);
     } catch (error) {
-      console.error('💥 Failed to fetch transactions:', error);
+      console.error('Failed to fetch transactions:', error);
       setError('Failed to load transactions');
     } finally {
       setLoading(false);
@@ -265,7 +263,7 @@ export default function TransactionsScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size={24} color={colors.primary} />
       </View>
     );
   }
