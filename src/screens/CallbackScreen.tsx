@@ -1,82 +1,115 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { TrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
-import { AppNavigationProp } from '../navigation/navigationTypes';
 
 export default function CallbackScreen() {
-  console.log('🎯 CallbackScreen mounted, URL:', window.location.href);
-  const navigation = useNavigation<AppNavigationProp>();
+  const navigation = useNavigation();
+  const route = useRoute();
 
   useEffect(() => {
-    console.log('🔄 CallbackScreen effect running');
     const handleCallback = async () => {
       try {
         console.log('🔄 Starting callback handling...');
 
-        // Get URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        const error = urlParams.get('error');
-        const errorDescription = urlParams.get('error_description');
-
-        console.log('📝 URL Parameters:', {
-          code: code ? `${code.substring(0, 4)}...` : 'missing',
-          error,
-          errorDescription,
+        // Log the raw route params
+        console.log('📝 Route params:', {
+          params: route.params,
+          hasUrl: !!route.params?.url,
         });
 
-        if (error) {
-          console.error('❌ Error from TrueLayer:', { error, errorDescription });
-          navigation.navigate('ConnectBank', { error: errorDescription || error });
+        const urlString = route.params?.url;
+        if (!urlString) {
+          console.error('❌ No URL in callback params');
+          navigation.navigate('ConnectBank', { error: 'Missing callback URL' });
           return;
         }
 
-        if (!code) {
-          console.error('❌ No authorization code found');
+        // Log the parsed URL details
+        const url = new URL(urlString);
+        console.log('🔍 Parsed callback URL:', {
+          fullUrl: url.toString(),
+          protocol: url.protocol,
+          host: url.host,
+          pathname: url.pathname,
+          search: url.search,
+          allParams: Object.fromEntries(url.searchParams.entries()),
+        });
+
+        const code = url.searchParams.get('code');
+        console.log('🎫 Authorization code:', {
+          hasCode: !!code,
+          codeLength: code?.length,
+          codePrefix: code?.substring(0, 10),
+        });
+
+        if (code) {
+          // Log TrueLayer service initialization
+          console.log('🔧 Initializing TrueLayer service:', {
+            clientId: TRUELAYER.CLIENT_ID?.substring(0, 10) + '...',
+            redirectUri: TRUELAYER.REDIRECT_URI,
+            timestamp: Date.now(),
+          });
+
+          const trueLayer = new TrueLayerService({
+            clientId: TRUELAYER.CLIENT_ID,
+            redirectUri: TRUELAYER.REDIRECT_URI,
+          });
+
+          try {
+            const result = await trueLayer.exchangeCode(code);
+            console.log('✅ Code exchange successful:', {
+              hasAccessToken: !!result?.access_token,
+              hasRefreshToken: !!result?.refresh_token,
+              expiresIn: result?.expires_in,
+            });
+
+            // Navigate back to ConnectBank screen with success
+            navigation.navigate('ConnectBank', { success: true });
+            return;
+          } catch (exchangeError) {
+            console.error('❌ Code exchange failed:', exchangeError);
+            navigation.navigate('ConnectBank', {
+              error:
+                exchangeError instanceof Error
+                  ? exchangeError.message
+                  : 'Failed to exchange authorization code',
+            });
+            return;
+          }
+        }
+
+        // Handle errors from TrueLayer
+        const error = url.searchParams.get('error');
+        if (error) {
+          console.error('❌ Error from TrueLayer:', {
+            error,
+            description: url.searchParams.get('error_description'),
+          });
           navigation.navigate('ConnectBank', {
-            error: 'No authorization code received',
+            error: url.searchParams.get('error_description') || error,
           });
           return;
         }
 
-        console.log('✅ Auth code received, initializing TrueLayer service...');
-        const trueLayer = new TrueLayerService({
-          clientId: TRUELAYER.CLIENT_ID || '',
-          redirectUri: TRUELAYER.REDIRECT_URI || '',
-        });
-
-        console.log('🔑 Starting token exchange...');
-        const tokenResponse = await trueLayer.exchangeCode(code);
-        console.log('💫 Token exchange completed:', {
-          access_token: tokenResponse.access_token ? 'present' : 'missing',
-          refresh_token: tokenResponse.refresh_token ? 'present' : 'missing',
-          expires_in: tokenResponse.expires_in,
-          token_type: tokenResponse.token_type,
-        });
-
-        console.log('🎯 Navigating to ConnectBank with success...');
-        navigation.navigate('ConnectBank', { success: true });
+        // If no code or error, go back to connect screen
+        console.log('⚠️ No code or error in callback');
+        navigation.navigate('ConnectBank');
       } catch (error) {
-        console.error('💥 Callback handling error:', {
-          error,
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined,
-        });
+        console.error('💥 Failed to handle callback:', error);
         navigation.navigate('ConnectBank', {
-          error: 'Failed to complete bank connection',
+          error: error instanceof Error ? error.message : 'Failed to complete connection',
         });
       }
     };
 
     handleCallback();
-  }, [navigation]);
+  }, [navigation, route.params]);
 
   return (
     <View style={styles.container}>
-      <Text>Completing bank connection...</Text>
-      <ActivityIndicator size="large" color="#0000ff" />
+      <ActivityIndicator size="large" />
     </View>
   );
 }

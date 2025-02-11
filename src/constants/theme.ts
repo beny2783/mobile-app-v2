@@ -1,15 +1,16 @@
 export const colors = {
-  primary: '#14233C', // Monzo's dark navy
-  secondary: '#E64B8C', // Monzo's pink
-  background: '#FFFFFF', // White
+  primary: '#7B61FF',
+  secondary: '#51CFFF',
+  background: '#0A1A2F',
+  surface: '#0E2339',
   text: {
-    primary: '#14233C', // Dark navy for text
-    secondary: '#71798B', // Grey for secondary text
-    inverse: '#FFFFFF', // White text for dark backgrounds
+    primary: '#FFFFFF',
+    secondary: '#8C9CAD',
+    inverse: '#0A1A2F',
   },
-  border: '#E5E9EF', // Light grey for borders
-  success: '#20D5A4', // Green for positive amounts
-  error: '#E64B8C', // Pink/Red for negative amounts
+  border: '#1C3A52',
+  success: '#25B970',
+  error: '#FF4444',
 };
 
 export const spacing = {

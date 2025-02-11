@@ -22,82 +22,153 @@ interface Transaction {
 }
 
 export class TrueLayerService {
-  private config: TrueLayerConfig;
   private baseUrl: string;
   private loginUrl: string;
+  private clientId: string;
+  private redirectUri: string;
   private encryption: EncryptionService;
   private categoriesLogged = false;
 
   constructor(config: TrueLayerConfig) {
-    this.config = config;
+    this.clientId = config.clientId;
+    this.redirectUri = Platform.select({
+      ios: 'spendingtracker://auth/callback', // Matches TrueLayer dashboard
+      android: 'spendingtracker://auth/callback', // Matches TrueLayer dashboard
+      default: 'http://localhost:19006/auth/callback', // Matches TrueLayer dashboard
+    });
+
+    // Log the actual redirect URI being used
+    console.log('TrueLayer redirect URI:', this.redirectUri);
+
+    this.baseUrl = __DEV__ ? 'https://auth.truelayer-sandbox.com' : 'https://auth.truelayer.com';
+    this.loginUrl = __DEV__
+      ? 'https://login-api.truelayer-sandbox.com'
+      : 'https://login-api.truelayer.com';
     this.encryption = new EncryptionService();
-    // Use sandbox environment for development
-    if (__DEV__) {
-      this.baseUrl = 'https://auth.truelayer-sandbox.com';
-      this.loginUrl = 'https://login-api.truelayer-sandbox.com';
-    } else {
-      this.baseUrl = 'https://auth.truelayer.com';
-      this.loginUrl = 'https://login-api.truelayer.com';
-    }
     console.log('TrueLayer Service Initialized:', {
       baseUrl: this.baseUrl,
       loginUrl: this.loginUrl,
       isDev: __DEV__,
+      redirectUri: this.redirectUri,
       configProvided: {
         clientId: config.clientId ? 'provided' : 'missing',
-        redirectUri: config.redirectUri ? 'provided' : 'missing',
+        redirectUri: config.redirectUri,
       },
     });
   }
 
   getAuthUrl(): string {
-    console.log('Building Auth URL with config:', {
-      clientId: this.config.clientId ? 'provided' : 'missing',
-      redirectUri: this.config.redirectUri,
-      baseUrl: this.baseUrl,
-    });
-
-    // For sandbox testing, use their test bank
     const params = new URLSearchParams({
       response_type: 'code',
-      client_id: this.config.clientId,
-      redirect_uri: this.config.redirectUri,
+      client_id: this.clientId,
+      redirect_uri: this.redirectUri, // This should match exactly
       scope: 'info accounts balance cards transactions',
-      providers: 'mock', // Changed to just 'mock'
+      providers: 'mock',
       enable_mock: 'true',
-      disable_providers: 'true', // Added this to force mock provider
+      disable_providers: 'true',
       enable_oauth_providers: 'false',
-      enable_open_banking_providers: 'false', // Changed to false
+      enable_open_banking_providers: 'false',
       enable_credentials_sharing_providers: 'false',
-      test_provider: 'mock', // Added test provider
+      test_provider: 'mock',
+      debug: 'true',
     });
 
-    if (__DEV__) {
-      params.append('debug', 'true');
-    }
-
-    const url = `${this.baseUrl}/?${params.toString()}`;
-    console.log('Final Auth URL:', url);
-    return url;
+    const authUrl = `${this.baseUrl}/?${params.toString()}`;
+    console.log('Final Auth URL:', authUrl);
+    return authUrl;
   }
 
   async exchangeCode(code: string): Promise<any> {
     try {
       console.log('🔄 Starting token exchange with code:', code.substring(0, 4) + '...');
 
-      const tokenResponse = await this.fetchTokens(code);
-      console.log('✅ Token exchange successful:', {
-        access_token: tokenResponse.access_token ? '(present)' : '(missing)',
-        refresh_token: tokenResponse.refresh_token ? '(present)' : '(missing)',
-        expires_in: tokenResponse.expires_in,
-        token_type: tokenResponse.token_type,
+      const timestamp = Date.now();
+      console.log('⏱️ Token exchange timing:', {
+        timestamp,
+        timeLimit: '5 minutes',
       });
 
-      // Use storeTokens method instead of direct database insert
-      const connectionId = await this.storeTokens(tokenResponse);
+      // Log exact values for debugging
+      console.log('🔑 Auth Configuration:', {
+        clientId: this.clientId,
+        redirectUri: this.redirectUri,
+        baseUrl: this.baseUrl,
+        isDev: __DEV__,
+      });
+
+      // Make token exchange request directly to TrueLayer
+      const tokenUrl = `${this.baseUrl}/connect/token`;
+      const requestBody = {
+        grant_type: 'authorization_code',
+        client_id: this.clientId,
+        client_secret: TRUELAYER.CLIENT_SECRET,
+        code,
+        redirect_uri: this.redirectUri,
+      };
+
+      console.log('📤 TrueLayer request:', {
+        url: tokenUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+          'Cache-Control': 'no-cache',
+          'X-Debug': 'true',
+          'X-TL-Environment': 'sandbox',
+        },
+        body: {
+          ...requestBody,
+          client_secret: '[REDACTED]',
+          code: code.substring(0, 10) + '...',
+        },
+      });
+
+      const response = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+          'Cache-Control': 'no-cache',
+          'X-Debug': 'true',
+          'X-TL-Environment': 'sandbox',
+        },
+        body: new URLSearchParams(requestBody).toString(),
+      });
+
+      const responseText = await response.text();
+      console.log('📥 Raw TrueLayer response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseText,
+      });
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (error) {
+        console.error('Failed to parse response:', error);
+        throw new Error(`Invalid response format: ${responseText}`);
+      }
+
+      if (!response.ok) {
+        console.error('❌ Token exchange failed:', {
+          status: response.status,
+          error: data.error,
+          description: data.error_description,
+          request: {
+            redirect_uri: this.redirectUri,
+            client_id: this.clientId.substring(0, 10) + '...',
+          },
+        });
+        throw new Error(data.error_description || data.error || 'Token exchange failed');
+      }
+
+      // Store tokens in database
+      const connectionId = await this.storeTokens(data);
       console.log('✅ Connection established with ID:', connectionId);
 
-      return tokenResponse;
+      return data;
     } catch (error) {
       console.error('💥 Token exchange error:', {
         error,
@@ -106,28 +177,6 @@ export class TrueLayerService {
       });
       throw error;
     }
-  }
-
-  private async fetchTokens(code: string) {
-    const { SUPABASE } = await import('../constants');
-
-    const response = await fetch(`${SUPABASE.URL}/functions/v1/exchange-token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${SUPABASE.ANON_KEY}`,
-      },
-      body: JSON.stringify({ code }),
-    });
-
-    const responseText = await response.text();
-    console.log('Token response:', responseText);
-
-    if (!response.ok) {
-      throw new Error(`Token exchange failed: ${responseText}`);
-    }
-
-    return JSON.parse(responseText);
   }
 
   // Update getStoredToken method
@@ -513,6 +562,85 @@ export class TrueLayerService {
       return data.id;
     } catch (error) {
       console.error('💥 Failed to store tokens:', error);
+      throw error;
+    }
+  }
+
+  async getBalances() {
+    try {
+      const token = await this.getStoredToken();
+      if (!token) throw new Error('No access token found');
+
+      const response = await fetch(`${this.loginUrl}/data/v1/accounts`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch accounts');
+      }
+
+      const accounts = await response.json();
+
+      // Get balance for each account
+      const balances = await Promise.all(
+        accounts.results.map(async (account: any) => {
+          const balanceResponse = await fetch(
+            `${this.loginUrl}/data/v1/accounts/${account.account_id}/balance`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json',
+              },
+            }
+          );
+
+          if (!balanceResponse.ok) {
+            throw new Error('Failed to fetch balance');
+          }
+
+          return balanceResponse.json();
+        })
+      );
+
+      return {
+        accounts,
+        balances,
+      };
+    } catch (error) {
+      console.error('Failed to fetch balances:', error);
+      throw error;
+    }
+  }
+
+  async getTransactionHistory(days: number = 30) {
+    try {
+      const token = await this.getStoredToken();
+      if (!token) throw new Error('No access token found');
+
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - days);
+
+      const response = await fetch(
+        `${this.loginUrl}/data/v1/accounts/${accountId}/transactions?from=${fromDate.toISOString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch transactions');
+      }
+
+      const transactions = await response.json();
+      return transactions.results;
+    } catch (error) {
+      console.error('Failed to fetch transaction history:', error);
       throw error;
     }
   }

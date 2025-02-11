@@ -1,115 +1,111 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { supabase } from '../services/supabase';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { Text } from 'react-native-paper';
 import { colors } from '../constants/theme';
+import { TrueLayerService } from '../services/trueLayer';
 
 export default function TotalBalance() {
-  const [balance, setBalance] = useState<number | null>(null);
+  const [balanceData, setBalanceData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchBalance();
+    const fetchData = async () => {
+      try {
+        const trueLayer = new TrueLayerService({
+          clientId: TRUELAYER.CLIENT_ID,
+          redirectUri: TRUELAYER.REDIRECT_URI,
+        });
+
+        const data = await trueLayer.getBalances();
+        setBalanceData(data);
+      } catch (error) {
+        console.error('Failed to fetch balance data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
-  const fetchBalance = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('amount, currency')
-        .order('currency');
-
-      if (error) throw error;
-
-      // Group by currency and sum amounts
-      const balances = data.reduce(
-        (acc, curr) => {
-          acc[curr.currency] = (acc[curr.currency] || 0) + curr.amount;
-          return acc;
-        },
-        {} as Record<string, number>
-      );
-
-      // For now, just show the first currency's balance
-      // TODO: Handle multiple currencies better
-      const [firstCurrency] = Object.keys(balances);
-      if (firstCurrency) {
-        setBalance(balances[firstCurrency]);
-      }
-    } catch (err) {
-      console.error('Failed to fetch balance:', err);
-      setError('Failed to load balance');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <ActivityIndicator />;
   }
 
-  if (error) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.error}>{error}</Text>
-      </View>
-    );
-  }
-
-  if (balance === null) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.noData}>No transaction data available</Text>
-      </View>
-    );
-  }
+  // Calculate totals
+  const totalBalance = balanceData?.balances.reduce((sum: number, b: any) => sum + b.current, 0);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Current Balance</Text>
-      <Text style={[styles.balance, { color: balance >= 0 ? colors.success : colors.error }]}>
-        £{Math.abs(balance).toFixed(2)}
+      <Text variant="titleMedium" style={styles.label}>
+        This month
       </Text>
+      <Text variant="displayLarge" style={styles.balance}>
+        £{totalBalance?.toFixed(2)}
+      </Text>
+      <Text variant="bodyMedium" style={styles.subtitle}>
+        Today's Balance
+      </Text>
+
+      <View style={styles.breakdown}>
+        <View style={styles.breakdownItem}>
+          <Text variant="titleMedium" style={styles.breakdownLabel}>
+            Starting balance
+          </Text>
+          <Text variant="titleLarge" style={styles.positiveAmount}>
+            +£31,322.73
+          </Text>
+          <Text variant="bodySmall" style={styles.dateLabel}>
+            On 1st Feb
+          </Text>
+        </View>
+
+        <View style={styles.breakdownItem}>
+          <Text variant="titleMedium" style={styles.breakdownLabel}>
+            Total money in
+          </Text>
+          <Text variant="titleLarge" style={styles.positiveAmount}>
+            +£450.00
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-    alignItems: 'center',
+    padding: 20,
+    backgroundColor: colors.surface,
   },
   label: {
-    fontSize: 16,
-    color: colors.text.secondary,
+    color: colors.text.primary,
     marginBottom: 8,
   },
   balance: {
-    fontSize: 32,
+    color: colors.text.primary,
     fontWeight: 'bold',
+    marginBottom: 4,
   },
-  error: {
-    color: colors.error,
-    textAlign: 'center',
-  },
-  noData: {
+  subtitle: {
     color: colors.text.secondary,
-    textAlign: 'center',
+    marginBottom: 24,
+  },
+  breakdown: {
+    marginTop: 20,
+  },
+  breakdownItem: {
+    marginBottom: 20,
+  },
+  breakdownLabel: {
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  positiveAmount: {
+    color: colors.success,
+    marginBottom: 4,
+  },
+  dateLabel: {
+    color: colors.text.secondary,
   },
 });

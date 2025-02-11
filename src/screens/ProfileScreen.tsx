@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Button, Image, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Text, Button, Avatar } from 'react-native-paper';
 import { useAuth } from '../contexts/AuthContext';
 import { colors } from '../constants/theme';
 import TotalBalance from '../components/TotalBalance';
@@ -10,16 +11,24 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.profileSection}>
-        {user?.user_metadata?.avatar_url && (
-          <Image source={{ uri: user.user_metadata.avatar_url }} style={styles.avatar} />
-        )}
-        <Text style={styles.name}>{user?.user_metadata?.full_name}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
-        <Button title="Sign Out" onPress={signOut} />
+      <View style={styles.header}>
+        <Avatar.Text
+          size={64}
+          label={user?.email?.[0].toUpperCase() || '?'}
+          style={styles.avatar}
+        />
+        <Text variant="titleLarge" style={styles.email}>
+          {user?.email}
+        </Text>
+        <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
+          Sign Out
+        </Button>
       </View>
-      <TotalBalance />
-      <BalanceGraph />
+
+      <View style={styles.content}>
+        <TotalBalance />
+        <BalanceGraph />
+      </View>
     </ScrollView>
   );
 }
@@ -29,27 +38,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  profileSection: {
-    alignItems: 'center',
+  header: {
     padding: 20,
-    backgroundColor: '#fff',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: 20,
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 12,
+    backgroundColor: colors.primary,
   },
   email: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 30,
+    color: colors.text.primary,
+    marginBottom: 16,
+  },
+  signOutButton: {
+    borderColor: colors.border,
+  },
+  content: {
+    flex: 1,
   },
 });

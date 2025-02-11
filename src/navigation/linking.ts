@@ -1,10 +1,15 @@
 export const linking = {
-  prefixes: ['http://localhost:19006', 'https://your-app.com'],
+  prefixes: ['spendingtracker://', 'http://localhost:19006'],
   config: {
     screens: {
       AppTabs: {
         screens: {
-          Callback: 'auth/callback',
+          Callback: {
+            path: 'auth/callback',
+            parse: {
+              url: (url: string) => url,
+            },
+          },
           ConnectBank: 'connect-bank',
           Main: '',
           Profile: 'profile',

@@ -1,27 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, ScrollView } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
 import { TrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
 import * as WebBrowser from 'expo-web-browser';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { ConnectBankScreenProps } from '../navigation/navigationTypes';
 import { supabase } from '../services/supabase';
+import { Button } from 'react-native-paper';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 // Create TrueLayer service instance outside component
 const trueLayer = new TrueLayerService({
   clientId: TRUELAYER.CLIENT_ID || '',
-  redirectUri: TRUELAYER.REDIRECT_URI || '',
+  redirectUri: TRUELAYER.REDIRECT_URI,
 });
 
-export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
+export default function ConnectBankScreen() {
+  const navigation = useNavigation();
+  const route = useRoute();
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('');
   const [connectionId, setConnectionId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   // Add this function to log debug info
   const addDebugInfo = (info: string) => {
@@ -44,86 +56,95 @@ export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
     );
   }, []);
 
-  // Separate useEffect for connection check
   useEffect(() => {
-    const checkConnection = async () => {
+    const init = async () => {
       try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-        if (userError || !user) {
-          console.error('No authenticated user found');
-          setStatus('disconnected');
-          return;
-        }
+        setLoading(true);
+        setError(null);
 
-        addDebugInfo('Checking bank connection status...');
-        addDebugInfo(`User ID: ${user.id}`);
-
-        // First, let's check what connections exist
-        const { data: connections, error } = await supabase
-          .from('bank_connections')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('provider', 'truelayer')
-          .eq('status', 'active')
-          .is('disconnected_at', null)
-          .not('encrypted_access_token', 'is', null)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (error) {
-          console.error('Error checking connection:', error);
-          addDebugInfo(`Error checking connection: ${JSON.stringify(error)}`);
-          setStatus('disconnected');
-          return;
-        }
-
-        if (connections && connections.length > 0) {
-          const connection = connections[0];
-          addDebugInfo(
-            `Found active connection: ${JSON.stringify(
-              {
-                id: connection.id,
-                status: connection.status,
-                disconnected_at: connection.disconnected_at,
-                has_tokens: !!connection.encrypted_access_token,
-                created_at: connection.created_at,
-              },
-              null,
-              2
-            )}`
-          );
-
-          setConnectionId(connection.id);
+        // Check for success/error from callback first
+        if (route.params?.success) {
           setStatus('connected');
-        } else {
-          addDebugInfo('No active bank connection found');
-          setConnectionId(null);
-          setStatus('disconnected');
+          setLoading(false);
+          return;
         }
+
+        if (route.params?.error) {
+          setError(route.params.error);
+          setStatus('error');
+          setLoading(false);
+          return;
+        }
+
+        // Then check current connection status
+        await checkBankConnection();
       } catch (error) {
-        console.error('Error checking connection:', error);
-        setStatus('disconnected');
+        console.error('Failed to initialize:', error);
+        setError('Failed to check bank connection');
+        setStatus('error');
+        setLoading(false);
       }
     };
 
-    checkConnection();
-  }, []); // Run only on mount
-
-  // Separate useEffect for handling route params
-  useEffect(() => {
-    if (route.params?.error) {
-      setError(route.params.error);
-      setStatus('error');
-      addDebugInfo(`Error from callback: ${route.params.error}`);
-    }
-    // Don't automatically set status to connected here
+    init();
   }, [route.params]);
+
+  const checkBankConnection = async () => {
+    try {
+      addDebugInfo('Checking bank connection status...');
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      addDebugInfo(`User ID: ${user?.id}`);
+
+      if (!user) {
+        setError('Please log in first');
+        setStatus('error');
+        setLoading(false);
+        return;
+      }
+
+      // Check for active bank connection
+      const { data: connections, error: dbError } = await supabase
+        .from('bank_connections')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .is('disconnected_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (dbError) {
+        console.error('Failed to check bank connection:', dbError);
+        setError('Failed to check bank connection');
+        setStatus('error');
+        setLoading(false);
+        return;
+      }
+
+      if (connections && connections.length > 0) {
+        addDebugInfo('Found active bank connection');
+        setStatus('connected');
+        setConnectionId(connections[0].id);
+      } else {
+        addDebugInfo('No active bank connection found');
+        setStatus('disconnected');
+        setConnectionId(null);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Failed to check bank connection:', error);
+      setError('Failed to check bank connection');
+      setStatus('error');
+      setLoading(false);
+    }
+  };
 
   const handleConnectBank = async () => {
     try {
+      setLoading(true);
       setError(null);
       setStatus('connecting');
       addDebugInfo('Starting bank connection process');
@@ -131,9 +152,43 @@ export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
       const authUrl = trueLayer.getAuthUrl();
       addDebugInfo(`Generated Auth URL: ${authUrl}`);
 
-      if (typeof window !== 'undefined') {
-        window.location.href = authUrl;
+      await WebBrowser.warmUpAsync();
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        authUrl,
+        'spendingtracker://auth/callback',
+        {
+          showInRecents: true,
+          preferEphemeralSession: true,
+        }
+      );
+
+      addDebugInfo(`WebBrowser result: ${JSON.stringify(result)}`);
+
+      if (result.type === 'success' && result.url) {
+        const url = new URL(result.url);
+        const code = url.searchParams.get('code');
+
+        if (code) {
+          addDebugInfo(`Got code: ${code.substring(0, 10)}...`);
+          try {
+            await trueLayer.exchangeCode(code);
+            addDebugInfo('Code exchange successful');
+            setStatus('connected');
+            // Refresh connection status
+            checkBankConnection();
+          } catch (exchangeError) {
+            console.error('Code exchange failed:', exchangeError);
+            setError('Failed to complete bank connection');
+            setStatus('error');
+          }
+        }
+      } else {
+        setError('Bank connection cancelled or failed');
+        setStatus('error');
       }
+
+      await WebBrowser.coolDownAsync();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       addDebugInfo(`Error: ${errorMessage}`);
@@ -145,6 +200,7 @@ export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
 
   const handleDisconnectBank = async () => {
     try {
+      setLoading(true);
       setError(null);
       addDebugInfo('Starting bank disconnection process');
 
@@ -186,6 +242,14 @@ export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
       setError(`Failed to disconnect bank: ${errorMessage}`);
     }
   };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

@@ -14,7 +14,10 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.spendingtracker"
+      "bundleIdentifier": "com.yourcompany.spendingtracker",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -28,6 +31,8 @@
       "favicon": "./assets/favicon.png",
       "bundler": "webpack"
     },
-    "plugins": ["expo-secure-store"]
+    "plugins": ["expo-secure-store"],
+    "newArchEnabled": true,
+    "scheme": "spendingtracker"
   }
 }

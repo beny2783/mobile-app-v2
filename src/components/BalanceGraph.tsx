@@ -93,78 +93,54 @@ export default function BalanceGraph() {
       {renderDateFilters()}
       <LineChart
         data={balanceData}
-        width={screenWidth - 32}
+        width={screenWidth - 40}
         height={220}
+        yAxisLabel="£"
+        yAxisSuffix=""
         chartConfig={{
-          backgroundColor: '#fff',
-          backgroundGradientFrom: '#fff',
-          backgroundGradientTo: '#fff',
+          backgroundColor: colors.surface,
+          backgroundGradientFrom: colors.surface,
+          backgroundGradientTo: colors.surface,
           decimalPlaces: 0,
-          color: (opacity = 1) => `rgba(128, 128, 128, ${opacity * 0.2})`,
-          labelColor: (opacity = 1) => `rgba(128, 128, 128, ${opacity})`,
-          propsForDots: {
-            r: '4',
-            strokeWidth: '2',
-            stroke: '#fff',
-            ...(Platform.OS === 'web'
-              ? {
-                  onResponderMove: undefined,
-                  onResponderGrant: undefined,
-                  onResponderRelease: undefined,
-                }
-              : {}),
-          },
-          propsForGrid: {
-            strokeDasharray: '5, 5',
-          },
+          color: (opacity = 1) => `rgba(81, 207, 255, ${opacity})`,
+          labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
           style: {
             borderRadius: 16,
           },
-          propsForVerticalLabels: {
-            ...(Platform.OS === 'web'
-              ? {
-                  onResponderMove: undefined,
-                  onResponderGrant: undefined,
-                  onResponderRelease: undefined,
-                }
-              : {}),
+          propsForDots: {
+            r: '6',
+            strokeWidth: '2',
+            stroke: colors.surface,
           },
-          propsForHorizontalLabels: {
-            ...(Platform.OS === 'web'
-              ? {
-                  onResponderMove: undefined,
-                  onResponderGrant: undefined,
-                  onResponderRelease: undefined,
-                }
-              : {}),
-          },
+          formatYLabel: (value) => `£${Math.round(Number(value) / 1000)}k`,
         }}
         bezier
         style={styles.chart}
-        withVerticalLines={true}
-        withHorizontalLines={true}
+        withVerticalLabels={true}
+        withHorizontalLabels={true}
         withDots={true}
-        withShadow={false}
         withInnerLines={true}
-        fromZero={false}
-        formatYLabel={(value) => `£${parseInt(value).toLocaleString()}`}
+        withOuterLines={false}
       />
+      <View style={styles.estimates}>
+        <View style={styles.estimateItem}>
+          <View style={styles.dot} />
+          <View>
+            <Text style={styles.estimateValue}>£32K</Text>
+            <Text style={styles.estimateValue}>£29K</Text>
+            <Text style={styles.estimateLabel}>EST</Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
-    padding: 16,
-    marginHorizontal: 16,
-    marginVertical: 8,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: colors.surface,
   },
   chart: {
     marginVertical: 8,
@@ -193,5 +169,29 @@ const styles = StyleSheet.create({
   filterTextActive: {
     color: colors.primary,
     fontWeight: '600',
+  },
+  estimates: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
+  estimateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.secondary,
+    marginRight: 8,
+  },
+  estimateValue: {
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  estimateLabel: {
+    color: colors.text.secondary,
+    fontSize: 12,
   },
 });
