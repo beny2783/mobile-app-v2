@@ -272,6 +272,80 @@ export class TrueLayerService {
 
   async fetchTransactions(fromDate?: Date, toDate?: Date): Promise<Transaction[]> {
     try {
+      console.log('🔄 Getting transactions...');
+
+      // Try to get from cache first
+      const { data: cachedTransactions, error: cacheError } = await supabase
+        .from('transactions')
+        .select('*')
+        .gte('timestamp', fromDate?.toISOString() || '1970-01-01')
+        .lte('timestamp', toDate?.toISOString() || new Date().toISOString())
+        .order('timestamp', { ascending: false });
+
+      if (cacheError) {
+        console.error('�� Cache fetch failed:', cacheError);
+      } else if (cachedTransactions?.length) {
+        console.log('✅ Found cached transactions:', cachedTransactions.length);
+        return cachedTransactions;
+      }
+
+      // If cache miss or error, fetch from TrueLayer
+      console.log('🔄 Cache miss, fetching from TrueLayer...');
+      const freshTransactions = await this.fetchTransactionsFromAPI(fromDate, toDate);
+
+      // Update cache in background
+      this.updateTransactionCache(freshTransactions).catch((error) => {
+        console.error('💥 Cache update failed:', error);
+      });
+
+      return freshTransactions;
+    } catch (error) {
+      console.error('💥 Failed to fetch transactions:', error);
+      throw error;
+    }
+  }
+
+  private async updateTransactionCache(transactions: Transaction[]) {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error('No authenticated user found');
+    }
+
+    // Prepare transactions for insert
+    const transactionsToInsert = transactions.map((t) => ({
+      user_id: user.id,
+      transaction_id: t.transaction_id,
+      account_id: t.account_id,
+      timestamp: t.timestamp,
+      description: t.description,
+      amount: t.amount,
+      currency: t.currency,
+      transaction_type: t.transaction_type,
+      transaction_category: t.transaction_category,
+      merchant_name: t.merchant_name,
+    }));
+
+    // Use upsert to handle duplicates
+    const { error } = await supabase.from('transactions').upsert(transactionsToInsert, {
+      onConflict: 'user_id,transaction_id',
+      ignoreDuplicates: true,
+    });
+
+    if (error) {
+      console.error('💥 Failed to cache transactions:', error);
+      throw error;
+    }
+
+    console.log('✅ Cached transactions:', transactionsToInsert.length);
+  }
+
+  // Rename current fetchTransactions to fetchTransactionsFromAPI
+  private async fetchTransactionsFromAPI(fromDate?: Date, toDate?: Date): Promise<Transaction[]> {
+    try {
       console.log('🔄 Getting valid token...');
       const accessToken = await this.refreshTokenIfNeeded();
       if (!accessToken) {
@@ -306,8 +380,15 @@ export class TrueLayerService {
       }
 
       const { transactions } = await response.json();
-      console.log('✅ Fetched transactions:', transactions.length);
-      return transactions;
+
+      // Transform transactions to include account_id
+      const transformedTransactions = transactions.map((t) => ({
+        ...t,
+        account_id: t.account_id || t.account?.account_id || 'default', // Fallback if not provided
+      }));
+
+      console.log('✅ Fetched transactions:', transformedTransactions.length);
+      return transformedTransactions;
     } catch (error) {
       console.error('💥 Failed to fetch transactions:', error);
       throw error;

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   SectionList,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import { TrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
@@ -40,6 +41,7 @@ export default function TransactionsScreen() {
     from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
     to: new Date(),
   });
+  const [searchQuery, setSearchQuery] = useState('');
 
   const trueLayer = new TrueLayerService({
     clientId: TRUELAYER.CLIENT_ID || '',
@@ -53,9 +55,19 @@ export default function TransactionsScreen() {
         from: dateRange.from.toISOString(),
         to: dateRange.to.toISOString(),
       });
+
+      // First fetch - should hit TrueLayer API
       const data = await trueLayer.fetchTransactions(dateRange.from, dateRange.to);
-      console.log('✅ Fetched transactions:', data.length);
+      console.log('✅ First fetch complete:', data.length, 'transactions');
       setTransactions(data);
+
+      // Second fetch - should hit cache
+      const cachedData = await trueLayer.fetchTransactions(dateRange.from, dateRange.to);
+      console.log(
+        '✅ Second fetch complete (should be from cache):',
+        cachedData.length,
+        'transactions'
+      );
     } catch (error) {
       console.error('💥 Failed to fetch transactions:', error);
       setError('Failed to load transactions');
@@ -69,8 +81,17 @@ export default function TransactionsScreen() {
   const groupedTransactions: TransactionSection[] = React.useMemo(() => {
     const groups: { [key: string]: Transaction[] } = {};
 
+    // Filter transactions by search query first
+    const filteredTransactions = transactions.filter((t) => {
+      const searchLower = searchQuery.toLowerCase();
+      return (
+        t.description.toLowerCase().includes(searchLower) ||
+        (t.merchant_name?.toLowerCase() || '').includes(searchLower)
+      );
+    });
+
     // Sort transactions by date (newest first)
-    const sortedTransactions = [...transactions].sort(
+    const sortedTransactions = [...filteredTransactions].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 
@@ -87,7 +108,7 @@ export default function TransactionsScreen() {
       data: transactions,
       totalAmount: transactions.reduce((sum, t) => sum + t.amount, 0),
     }));
-  }, [transactions]);
+  }, [transactions, searchQuery]);
 
   useEffect(() => {
     fetchTransactions();
@@ -99,44 +120,48 @@ export default function TransactionsScreen() {
   };
 
   const setDateFilter = (days: number) => {
+    const now = new Date();
     setDateRange({
-      from: new Date(Date.now() - days * 24 * 60 * 60 * 1000),
-      to: new Date(),
+      from: new Date(now.getTime() - days * 24 * 60 * 60 * 1000),
+      to: now,
     });
   };
 
-  const renderDateFilter = () => (
-    <View style={styles.filterContainer}>
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          dateRange.from.getTime() === Date.now() - 7 * 24 * 60 * 60 * 1000 &&
-            styles.filterButtonActive,
-        ]}
-        onPress={() => setDateFilter(7)}
-      >
-        <Text style={styles.filterText}>7 Days</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          dateRange.from.getTime() === Date.now() - 30 * 24 * 60 * 60 * 1000 &&
-            styles.filterButtonActive,
-        ]}
-        onPress={() => setDateFilter(30)}
-      >
-        <Text style={styles.filterText}>30 Days</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          dateRange.from.getTime() === Date.now() - 90 * 24 * 60 * 60 * 1000 &&
-            styles.filterButtonActive,
-        ]}
-        onPress={() => setDateFilter(90)}
-      >
-        <Text style={styles.filterText}>90 Days</Text>
-      </TouchableOpacity>
+  const renderDateFilter = () => {
+    const getDaysDiff = (from: Date, to: Date) =>
+      Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
+
+    return (
+      <View style={styles.filterContainer}>
+        {[7, 30, 90].map((days) => {
+          const isActive = getDaysDiff(dateRange.from, dateRange.to) === days;
+          return (
+            <TouchableOpacity
+              key={days}
+              style={[styles.filterButton, isActive && styles.filterButtonActive]}
+              onPress={() => setDateFilter(days)}
+            >
+              <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+                {days} Days
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderSearchBar = () => (
+    <View style={styles.searchContainer}>
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search transactions..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        clearButtonMode="while-editing"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
     </View>
   );
 
@@ -185,6 +210,7 @@ export default function TransactionsScreen() {
 
   return (
     <View style={styles.container}>
+      {renderSearchBar()}
       {renderDateFilter()}
       <SectionList
         sections={groupedTransactions}
@@ -270,12 +296,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 20,
     backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   filterButtonActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primary + '20',
+    borderColor: colors.primary,
   },
   filterText: {
     color: colors.text.primary,
+  },
+  filterTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -293,5 +326,20 @@ const styles = StyleSheet.create({
   sectionTotal: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  searchContainer: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  searchInput: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 16,
   },
 });

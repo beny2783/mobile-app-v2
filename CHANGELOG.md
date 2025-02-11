@@ -21,7 +21,7 @@
   - [x] Handle token management
   - [x] Token encryption/decryption
   - [x] Token storage in Supabase
-  - [ ] Token refresh mechanism
+  - [x] Token refresh mechanism
 - [ ] Implement bank account management
   - [ ] Connect multiple banks
   - [ ] View connected accounts
@@ -39,6 +39,9 @@
   - [ ] Pull to refresh
   - [ ] Infinite scroll
   - [ ] Basic transaction details
+- [x] Transaction fetching from TrueLayer API
+- [x] Transaction list view with date filtering
+- [x] Transaction caching in Supabase
 
 ## 🔍 Phase 4: Transaction Features
 

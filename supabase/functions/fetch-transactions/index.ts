@@ -54,7 +54,12 @@ serve(async (req: Request) => {
 
         const transactionsData = await transactionsResponse.json();
         if (transactionsResponse.ok) {
-          transactions.push(...transactionsData.results);
+          // Add account_id to each transaction
+          const accountTransactions = transactionsData.results.map((t) => ({
+            ...t,
+            account_id: account.account_id,
+          }));
+          transactions.push(...accountTransactions);
         }
       }
 
