@@ -26,7 +26,10 @@
   - [ ] Connect multiple banks
   - [ ] View connected accounts
   - [ ] Refresh bank data
-  - [ ] Handle disconnection
+  - [x] Handle disconnection
+    - [x] Clear connection tokens
+    - [x] Remove associated transactions
+    - [x] Update UI state
 
 ## 💰 Phase 3: Transaction Management
 
@@ -99,3 +102,4 @@
 - 2024-02-11: Bank connection UI implemented with status indicators and error handling
 - 2024-02-11: Token management system implemented with encryption and secure storage
 - 2024-02-11: Successful end-to-end bank connection flow with TrueLayer sandbox
+- 2024-02-11: Implemented bank disconnection with transaction cleanup

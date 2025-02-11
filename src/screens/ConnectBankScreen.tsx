@@ -7,24 +7,27 @@ import { TRUELAYER } from '../constants';
 import * as WebBrowser from 'expo-web-browser';
 import { useRoute } from '@react-navigation/native';
 import { ConnectBankScreenProps } from '../navigation/navigationTypes';
+import { supabase } from '../services/supabase';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+// Create TrueLayer service instance outside component
+const trueLayer = new TrueLayerService({
+  clientId: TRUELAYER.CLIENT_ID || '',
+  redirectUri: TRUELAYER.REDIRECT_URI || '',
+});
 
 export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('');
+  const [connectionId, setConnectionId] = useState<string | null>(null);
 
   // Add this function to log debug info
   const addDebugInfo = (info: string) => {
     setDebugInfo((prev) => `${prev}\n${new Date().toISOString()}: ${info}`);
     console.log(`Debug: ${info}`);
   };
-
-  const trueLayer = new TrueLayerService({
-    clientId: TRUELAYER.CLIENT_ID || '',
-    redirectUri: TRUELAYER.REDIRECT_URI || '',
-  });
 
   useEffect(() => {
     // Log environment info on mount
@@ -41,17 +44,82 @@ export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
     );
   }, []);
 
+  // Separate useEffect for connection check
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+        if (userError || !user) {
+          console.error('No authenticated user found');
+          setStatus('disconnected');
+          return;
+        }
+
+        addDebugInfo('Checking bank connection status...');
+        addDebugInfo(`User ID: ${user.id}`);
+
+        // First, let's check what connections exist
+        const { data: connections, error } = await supabase
+          .from('bank_connections')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('provider', 'truelayer')
+          .eq('status', 'active')
+          .is('disconnected_at', null)
+          .not('encrypted_access_token', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (error) {
+          console.error('Error checking connection:', error);
+          addDebugInfo(`Error checking connection: ${JSON.stringify(error)}`);
+          setStatus('disconnected');
+          return;
+        }
+
+        if (connections && connections.length > 0) {
+          const connection = connections[0];
+          addDebugInfo(
+            `Found active connection: ${JSON.stringify(
+              {
+                id: connection.id,
+                status: connection.status,
+                disconnected_at: connection.disconnected_at,
+                has_tokens: !!connection.encrypted_access_token,
+                created_at: connection.created_at,
+              },
+              null,
+              2
+            )}`
+          );
+
+          setConnectionId(connection.id);
+          setStatus('connected');
+        } else {
+          addDebugInfo('No active bank connection found');
+          setConnectionId(null);
+          setStatus('disconnected');
+        }
+      } catch (error) {
+        console.error('Error checking connection:', error);
+        setStatus('disconnected');
+      }
+    };
+
+    checkConnection();
+  }, []); // Run only on mount
+
+  // Separate useEffect for handling route params
   useEffect(() => {
     if (route.params?.error) {
       setError(route.params.error);
       setStatus('error');
       addDebugInfo(`Error from callback: ${route.params.error}`);
     }
-    if (route.params?.success) {
-      setStatus('connected');
-      addDebugInfo('Bank connection successful');
-      // TODO: Update UI to show success state
-    }
+    // Don't automatically set status to connected here
   }, [route.params]);
 
   const handleConnectBank = async () => {
@@ -72,6 +140,50 @@ export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
       console.error('Error connecting bank:', error);
       setError(`Failed to connect to bank: ${errorMessage}`);
       setStatus('error');
+    }
+  };
+
+  const handleDisconnectBank = async () => {
+    try {
+      setError(null);
+      addDebugInfo('Starting bank disconnection process');
+
+      if (!connectionId) {
+        throw new Error('No active connection found');
+      }
+
+      await trueLayer.disconnectBank(connectionId);
+
+      // Clear transactions from state
+      const {
+        data: { user },
+        error: deleteError,
+      } = await supabase.auth.getUser();
+      if (deleteError) {
+        console.error('Error deleting transactions:', deleteError);
+        throw new Error('Failed to delete transactions');
+      }
+
+      addDebugInfo(`Deleting transactions for user: ${user.id}`);
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (transactionError) {
+        addDebugInfo(`Error deleting transactions: ${JSON.stringify(transactionError)}`);
+        throw new Error('Failed to delete transactions');
+      }
+
+      addDebugInfo('Transactions deleted successfully');
+      setStatus('disconnected');
+      setConnectionId(null);
+      addDebugInfo('Bank disconnected successfully');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addDebugInfo(`Error: ${errorMessage}`);
+      console.error('Error disconnecting bank:', error);
+      setError(`Failed to disconnect bank: ${errorMessage}`);
     }
   };
 
@@ -97,15 +209,26 @@ export default function ConnectBankScreen({ route }: ConnectBankScreenProps) {
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.button, status === 'connected' && styles.buttonDisabled]}
-          onPress={handleConnectBank}
-          disabled={status === 'connected'}
-        >
-          <Text style={styles.buttonText}>
-            {status === 'connected' ? 'Connected' : 'Connect Bank'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.buttonContainer}>
+          {status === 'connected' ? (
+            <TouchableOpacity
+              style={[styles.button, styles.disconnectButton]}
+              onPress={handleDisconnectBank}
+            >
+              <Text style={styles.buttonText}>Disconnect Bank</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.button, status === 'connecting' && styles.buttonDisabled]}
+              onPress={handleConnectBank}
+              disabled={status === 'connecting'}
+            >
+              <Text style={styles.buttonText}>
+                {status === 'connecting' ? 'Connecting...' : 'Connect Bank'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       {error && (
         <View style={styles.errorContainer}>
@@ -215,5 +338,11 @@ const styles = StyleSheet.create({
   errorText: {
     color: colors.error,
     fontSize: 14,
+  },
+  buttonContainer: {
+    marginTop: 16,
+  },
+  disconnectButton: {
+    backgroundColor: colors.error,
   },
 });

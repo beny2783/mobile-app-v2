@@ -52,6 +52,38 @@ export default function TransactionsScreen() {
     redirectUri: TRUELAYER.REDIRECT_URI || '',
   });
 
+  // Add effect to clear transactions when no active connection exists
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+        if (userError || !user) return;
+
+        const { data: connections } = await supabase
+          .from('bank_connections')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .is('disconnected_at', null)
+          .not('encrypted_access_token', 'is', null)
+          .limit(1);
+
+        if (!connections || connections.length === 0) {
+          console.log('No active connections, clearing transactions');
+          setTransactions([]);
+        }
+      } catch (error) {
+        console.error('Error checking connection:', error);
+      }
+    };
+
+    checkConnection();
+  }, []);
+
+  // Update fetchTransactions to clear data if no active connection
   const fetchTransactions = async () => {
     try {
       setError(null);
@@ -63,11 +95,19 @@ export default function TransactionsScreen() {
       });
 
       const data = await trueLayer.fetchTransactions(dateRange.from, dateRange.to);
-      console.log('✅ Fetch complete:', data.length, 'transactions');
-      setTransactions(data);
+
+      // If no data returned and no error, assume no active connection
+      if (data.length === 0) {
+        console.log('No transactions found, clearing local data');
+        setTransactions([]);
+      } else {
+        console.log('✅ Fetch complete:', data.length, 'transactions');
+        setTransactions(data);
+      }
     } catch (error) {
       console.error('💥 Failed to fetch transactions:', error);
       setError('Failed to load transactions');
+      setTransactions([]); // Clear transactions on error
     } finally {
       setLoading(false);
       setRefreshing(false);

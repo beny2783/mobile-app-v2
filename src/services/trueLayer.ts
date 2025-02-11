@@ -93,51 +93,9 @@ export class TrueLayerService {
         token_type: tokenResponse.token_type,
       });
 
-      // Get current user
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('No authenticated user found');
-      }
-
-      // Encrypt tokens before storing
-      const encryptedAccessToken = this.encryption.encrypt(tokenResponse.access_token);
-      console.log('🔐 Access token encrypted');
-
-      const encryptedRefreshToken = tokenResponse.refresh_token
-        ? this.encryption.encrypt(tokenResponse.refresh_token)
-        : null;
-      console.log(
-        '🔐 Refresh token encrypted:',
-        encryptedRefreshToken ? '(present)' : '(not provided)'
-      );
-
-      // Store encrypted tokens in Supabase
-      console.log('💾 Storing tokens in database...');
-      const { error, data } = await supabase
-        .from('bank_connections')
-        .insert({
-          user_id: user.id,
-          provider: 'truelayer',
-          encrypted_access_token: encryptedAccessToken,
-          encrypted_refresh_token: encryptedRefreshToken,
-          expires_at: new Date(Date.now() + tokenResponse.expires_in * 1000),
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Database storage failed:', error);
-        throw error;
-      }
-
-      console.log('✅ Tokens stored successfully. Connection ID:', data.id);
-
-      // Verify we can retrieve and decrypt
-      const storedToken = await this.getStoredToken();
-      console.log('🔍 Token retrieval test:', storedToken ? 'successful' : 'failed');
+      // Use storeTokens method instead of direct database insert
+      const connectionId = await this.storeTokens(tokenResponse);
+      console.log('✅ Connection established with ID:', connectionId);
 
       return tokenResponse;
     } catch (error) {
@@ -183,19 +141,21 @@ export class TrueLayerService {
       throw new Error('No authenticated user found');
     }
 
-    // Get the most recent bank connection
+    // Get the most recent active bank connection
     const { data, error } = await supabase
       .from('bank_connections')
       .select('*')
       .eq('user_id', user.id)
       .eq('provider', 'truelayer')
-      .order('created_at', { ascending: false }) // Order by most recent
-      .limit(1) // Get only one row
+      .eq('status', 'active')
+      .is('disconnected_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single();
 
     if (error) {
       console.error('Failed to fetch bank connection:', error);
-      throw error;
+      return null;
     }
 
     if (!data || new Date(data.expires_at) < new Date()) {
@@ -204,7 +164,6 @@ export class TrueLayerService {
     }
 
     try {
-      // Decrypt token before returning
       return this.encryption.decrypt(data.encrypted_access_token);
     } catch (error) {
       console.error('Failed to decrypt token:', error);
@@ -213,15 +172,31 @@ export class TrueLayerService {
   }
 
   async refreshTokenIfNeeded(): Promise<string> {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw new Error('No authenticated user found');
+    }
+
+    // Get active connection
     const { data, error } = await supabase
       .from('bank_connections')
       .select('encrypted_access_token, encrypted_refresh_token, expires_at')
+      .eq('user_id', user.id)
       .eq('provider', 'truelayer')
+      .eq('status', 'active')
+      .is('disconnected_at', null)
+      .not('encrypted_access_token', 'is', null) // Only check access token
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.log('No active bank connection found');
+      throw new Error('No active bank connection');
+    }
     if (!data) throw new Error('No bank connection found');
 
     // Check if token is expired or about to expire (within 5 minutes)
@@ -280,6 +255,35 @@ export class TrueLayerService {
       } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('No authenticated user found');
 
+      // Check if user has any active bank connections
+      const { data: connections, error: connectionsError } = await supabase
+        .from('bank_connections')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .is('disconnected_at', null)
+        .not('encrypted_access_token', 'is', null) // Only check for access token
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (connectionsError) {
+        console.error('Failed to check bank connections:', connectionsError);
+        throw new Error('Failed to check bank connections');
+      }
+
+      if (!connections || connections.length === 0) {
+        console.log('No active bank connections found');
+        return [];
+      }
+
+      // Log the found connection for debugging
+      console.log('Found active connection:', {
+        id: connections[0].id,
+        status: connections[0].status,
+        has_access_token: !!connections[0].encrypted_access_token,
+        created_at: connections[0].created_at,
+      });
+
       // Get fresh data from API
       console.log('🔄 Fetching transactions from API...');
       const freshTransactions = await this.fetchTransactionsFromAPI(fromDate, toDate);
@@ -332,15 +336,16 @@ export class TrueLayerService {
     }
   }
 
-  // Rename current fetchTransactions to fetchTransactionsFromAPI
   private async fetchTransactionsFromAPI(fromDate?: Date, toDate?: Date): Promise<Transaction[]> {
     try {
       console.log('🔄 Getting valid token...');
-      const accessToken = await this.refreshTokenIfNeeded();
-      if (!accessToken) {
-        throw new Error('No valid access token available');
+      let accessToken: string;
+      try {
+        accessToken = await this.refreshTokenIfNeeded();
+      } catch (error) {
+        console.log('No active bank connection or token available');
+        return [];
       }
-      console.log('✅ Got valid token');
 
       const { SUPABASE } = await import('../constants');
 
@@ -397,6 +402,117 @@ export class TrueLayerService {
       return transformedTransactions;
     } catch (error) {
       console.error('💥 Failed to fetch transactions:', error);
+      throw error;
+    }
+  }
+
+  async disconnectBank(connectionId: string): Promise<void> {
+    try {
+      console.log('🔄 Disconnecting bank connection:', connectionId);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('No authenticated user found');
+      }
+
+      // First update the connection status
+      const { error: updateError } = await supabase
+        .from('bank_connections')
+        .update({
+          status: 'disconnected',
+          disconnected_at: new Date().toISOString(),
+          encrypted_access_token: null,
+          encrypted_refresh_token: null,
+        })
+        .eq('id', connectionId)
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.error('💥 Failed to update connection status:', updateError);
+        throw new Error('Failed to disconnect bank');
+      }
+
+      // Then delete associated transactions
+      const { error: deleteError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (deleteError) {
+        console.error('💥 Failed to delete transactions:', deleteError);
+        throw new Error('Failed to delete transactions');
+      }
+
+      console.log('✅ Bank disconnected successfully');
+    } catch (error) {
+      console.error('💥 Failed to disconnect bank:', error);
+      throw error;
+    }
+  }
+
+  private async storeTokens(tokens: TokenResponse): Promise<string> {
+    try {
+      console.log('💾 Storing tokens in database...');
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('No authenticated user found');
+
+      // Create new active connection first
+      const { data, error } = await supabase
+        .from('bank_connections')
+        .insert({
+          user_id: user.id,
+          provider: 'truelayer',
+          encrypted_access_token: this.encryption.encrypt(tokens.access_token),
+          encrypted_refresh_token: tokens.refresh_token
+            ? this.encryption.encrypt(tokens.refresh_token)
+            : null,
+          expires_at: new Date(Date.now() + tokens.expires_in * 1000),
+          status: 'active',
+          disconnected_at: null,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Failed to store tokens:', error);
+        throw error;
+      }
+
+      // Then deactivate any other active connections
+      const { error: deactivateError } = await supabase
+        .from('bank_connections')
+        .update({
+          status: 'disconnected',
+          disconnected_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .neq('id', data.id); // Don't deactivate the one we just created
+
+      if (deactivateError) {
+        console.error('Failed to deactivate old connections:', deactivateError);
+        // Don't throw here, as the new connection is already created
+      }
+
+      console.log('✅ Tokens stored successfully. Connection ID:', data.id);
+
+      // Verify we can retrieve the token
+      const testToken = await this.getStoredToken();
+      if (!testToken) {
+        console.error('Failed to verify stored token');
+        throw new Error('Token verification failed');
+      }
+
+      return data.id;
+    } catch (error) {
+      console.error('💥 Failed to store tokens:', error);
       throw error;
     }
   }
