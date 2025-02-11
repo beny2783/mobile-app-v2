@@ -9,6 +9,12 @@ import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { TabNavigator } from './src/navigation/TabNavigator';
 import { setupErrorHandling } from './src/utils/errorHandling';
 import { linking } from './src/navigation/linking';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import { colors } from './src/constants/theme';
+import { enableScreens } from 'react-native-screens';
+
+// Disable native screens to avoid animation issues
+enableScreens(false);
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -16,15 +22,43 @@ function Navigation() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return null; // Or a loading spinner
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <View />
+      </View>
+    );
   }
 
   return (
-    <Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: 'none',
+        contentStyle: { backgroundColor: 'white' },
+        gestureEnabled: false,
+        fullScreenGestureEnabled: false,
+        customAnimationOnGesture: false,
+        animationTypeForReplace: 'push',
+      }}
+    >
       {!user ? (
-        <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="Auth"
+          component={AuthScreen}
+          options={{
+            gestureEnabled: false,
+            animation: 'none',
+          }}
+        />
       ) : (
-        <Stack.Screen name="AppTabs" component={TabNavigator} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="AppTabs"
+          component={TabNavigator}
+          options={{
+            gestureEnabled: false,
+            animation: 'none',
+          }}
+        />
       )}
     </Stack.Navigator>
   );
@@ -36,14 +70,29 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <NavigationContainer linking={linking}>
-        <View style={styles.container}>
-          <StatusBar style="auto" />
-          <Navigation />
-        </View>
-      </NavigationContainer>
-    </AuthProvider>
+    <View style={styles.container}>
+      <StatusBar style="auto" />
+      <ErrorBoundary>
+        <AuthProvider>
+          <NavigationContainer
+            linking={linking}
+            theme={{
+              colors: {
+                background: 'white',
+                card: 'white',
+                text: colors.text.primary,
+                border: colors.border,
+                primary: colors.primary,
+                notification: colors.error,
+              },
+              dark: false,
+            }}
+          >
+            <Navigation />
+          </NavigationContainer>
+        </AuthProvider>
+      </ErrorBoundary>
+    </View>
   );
 }
 
@@ -51,7 +100,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    width: '100%',
-    height: '100%',
   },
 });

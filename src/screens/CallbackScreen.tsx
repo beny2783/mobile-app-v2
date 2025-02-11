@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { TrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
 import { AppNavigationProp } from '../navigation/navigationTypes';
+import { colors } from '../constants/theme';
 
 export default function CallbackScreen() {
   console.log('🎯 CallbackScreen mounted, URL:', window.location.href);
@@ -76,7 +77,7 @@ export default function CallbackScreen() {
   return (
     <View style={styles.container}>
       <Text>Completing bank connection...</Text>
-      <ActivityIndicator size="large" color="#0000ff" />
+      <ActivityIndicator size={24} color={colors.primary} />
     </View>
   );
 }

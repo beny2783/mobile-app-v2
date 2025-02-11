@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Session } from '@supabase/supabase-js';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
 import { User } from '../types';
 
@@ -14,6 +14,17 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper function to convert Supabase User to our User type
+const convertUser = (supabaseUser: SupabaseUser | null): User | null => {
+  if (!supabaseUser) return null;
+
+  return {
+    id: supabaseUser.id,
+    email: supabaseUser.email || '',
+    user_metadata: supabaseUser.user_metadata,
+  };
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -24,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ?? null);
+      setUser(convertUser(session?.user));
       setLoading(false);
     });
 
@@ -33,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      setUser(session?.user ?? null);
+      setUser(convertUser(session?.user));
       setLoading(false);
     });
 
@@ -57,9 +68,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   };
 
+  // Move console.log outside of JSX
+  console.log('AuthProvider rendering', { loading, user });
+
   return (
     <AuthContext.Provider value={{ session, user, loading, signIn, signOut, signInWithGoogle }}>
-      {console.log('AuthProvider rendering', { loading, user })}
       {children}
     </AuthContext.Provider>
   );
