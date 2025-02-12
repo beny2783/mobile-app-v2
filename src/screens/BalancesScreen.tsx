@@ -12,10 +12,11 @@ interface BankAccount {
   account_type: string;
   account_name: string;
   currency: string;
-  balance: number;
   last_updated: string;
   created_at: string;
   updated_at: string;
+  current: number;
+  available: number;
 }
 
 export default function BalancesScreen() {
@@ -45,20 +46,44 @@ export default function BalancesScreen() {
         throw connectionError;
       }
 
-      // Then fetch accounts for this connection
-      const { data, error: fetchError } = await supabase
+      // Then fetch accounts with their balances
+      const { data: accounts, error: accountsError } = await supabase
         .from('bank_accounts')
         .select('*')
         .eq('user_id', user.id)
         .eq('connection_id', connection.id)
         .order('created_at', { ascending: false });
 
-      if (fetchError) {
-        console.error('Error fetching accounts:', fetchError);
-        throw fetchError;
+      if (accountsError) {
+        console.error('Error fetching accounts:', accountsError);
+        throw accountsError;
       }
 
-      setAccounts(data || []);
+      // Fetch balances separately
+      const { data: balances, error: balancesError } = await supabase
+        .from('balances')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('connection_id', connection.id);
+
+      if (balancesError) {
+        console.error('Error fetching balances:', balancesError);
+        throw balancesError;
+      }
+
+      // Combine the data
+      const transformedAccounts = (accounts || []).map((account) => {
+        const accountBalance = balances?.find(
+          (balance) => balance.account_id === account.account_id
+        );
+        return {
+          ...account,
+          current: accountBalance?.current || 0,
+          available: accountBalance?.available || 0,
+        };
+      });
+
+      setAccounts(transformedAccounts);
       setError(null);
     } catch (err) {
       console.error('Error fetching accounts:', err);
@@ -102,8 +127,8 @@ export default function BalancesScreen() {
     );
   }
 
-  // Calculate total balance
-  const totalBalance = accounts.reduce((sum, account) => sum + (account.balance || 0), 0);
+  // Calculate total balance using current balance
+  const totalBalance = accounts.reduce((sum, account) => sum + (account.current || 0), 0);
 
   return (
     <ScrollView
@@ -134,10 +159,18 @@ export default function BalancesScreen() {
             <View style={styles.balanceContainer}>
               <View style={styles.balanceItem}>
                 <Text variant="bodySmall" style={styles.balanceLabel}>
-                  Balance
+                  Current Balance
                 </Text>
                 <Text variant="headlineMedium" style={styles.balance}>
-                  {formatCurrency(account.balance || 0, account.currency)}
+                  {formatCurrency(account.current || 0, account.currency)}
+                </Text>
+              </View>
+              <View style={styles.balanceItem}>
+                <Text variant="bodySmall" style={styles.balanceLabel}>
+                  Available
+                </Text>
+                <Text variant="headlineMedium" style={styles.balance}>
+                  {formatCurrency(account.available || 0, account.currency)}
                 </Text>
               </View>
             </View>
@@ -195,6 +228,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 16,
+    gap: 16,
   },
   balanceItem: {
     flex: 1,

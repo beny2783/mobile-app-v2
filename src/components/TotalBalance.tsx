@@ -5,13 +5,16 @@ import { colors } from '../constants/theme';
 import { supabase } from '../services/supabase';
 
 interface Balance {
-  balance_id: string;
+  id: string;
   user_id: string;
+  connection_id: string;
   account_id: string;
-  balance: number;
+  current: number;
+  available: number;
   currency: string;
-  account_name: string;
   created_at: string;
+  updated_at: string;
+  account_name?: string;
 }
 
 export default function TotalBalance() {
@@ -27,15 +30,48 @@ export default function TotalBalance() {
         } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data, error: fetchError } = await supabase
-          .from('balances')
+        // First get active connection
+        const { data: connection, error: connectionError } = await supabase
+          .from('bank_connections')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .eq('status', 'active')
+          .is('disconnected_at', null)
+          .single();
 
-        if (fetchError) throw fetchError;
+        if (connectionError) {
+          console.error('Error fetching bank connection:', connectionError);
+          throw connectionError;
+        }
 
-        setBalances(data || []);
+        // Then fetch balances and accounts
+        const [{ data: balances, error: balancesError }, { data: accounts, error: accountsError }] =
+          await Promise.all([
+            supabase
+              .from('balances')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('connection_id', connection.id),
+            supabase
+              .from('bank_accounts')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('connection_id', connection.id),
+          ]);
+
+        if (balancesError) throw balancesError;
+        if (accountsError) throw accountsError;
+
+        // Combine balances with account names
+        const combinedBalances = (balances || []).map((balance) => {
+          const account = accounts?.find((a) => a.account_id === balance.account_id);
+          return {
+            ...balance,
+            account_name: account?.account_name || 'Unknown Account',
+          };
+        });
+
+        setBalances(combinedBalances);
         setError(null);
       } catch (err) {
         console.error('Failed to fetch balance data:', err);
@@ -64,8 +100,8 @@ export default function TotalBalance() {
     );
   }
 
-  // Calculate total balance
-  const totalBalance = balances.reduce((sum, b) => sum + b.balance, 0);
+  // Calculate total balance using current balance
+  const totalBalance = balances.reduce((sum, b) => sum + (b.current || 0), 0);
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -85,13 +121,13 @@ export default function TotalBalance() {
       </Text>
       <Text variant="bodyMedium" style={styles.subtitle}>
         Last updated:{' '}
-        {balances[0]?.created_at ? new Date(balances[0].created_at).toLocaleString() : 'Never'}
+        {balances[0]?.updated_at ? new Date(balances[0].updated_at).toLocaleString() : 'Never'}
       </Text>
 
       {balances.length > 0 && (
         <View style={styles.breakdown}>
           {balances.map((balance) => (
-            <View key={balance.balance_id} style={styles.breakdownItem}>
+            <View key={balance.id} style={styles.breakdownItem}>
               <Text variant="titleMedium" style={styles.breakdownLabel}>
                 {balance.account_name}
               </Text>
@@ -99,10 +135,10 @@ export default function TotalBalance() {
                 variant="titleLarge"
                 style={[
                   styles.amount,
-                  { color: balance.balance >= 0 ? colors.success : colors.error },
+                  { color: balance.current >= 0 ? colors.success : colors.error },
                 ]}
               >
-                {formatCurrency(balance.balance)}
+                {formatCurrency(balance.current || 0)}
               </Text>
             </View>
           ))}
