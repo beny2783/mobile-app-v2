@@ -14,7 +14,9 @@ import { TrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
 import * as WebBrowser from 'expo-web-browser';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { ConnectBankScreenProps } from '../navigation/navigationTypes';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
+import type { AppTabParamList } from '../types/navigation';
 import { supabase } from '../services/supabase';
 import { Button } from 'react-native-paper';
 
@@ -26,9 +28,12 @@ const trueLayer = new TrueLayerService({
   redirectUri: TRUELAYER.REDIRECT_URI,
 });
 
+type ConnectBankScreenNavigationProp = NativeStackNavigationProp<AppTabParamList, 'ConnectBank'>;
+type ConnectBankScreenRouteProp = RouteProp<AppTabParamList, 'ConnectBank'>;
+
 export default function ConnectBankScreen() {
-  const navigation = useNavigation();
-  const route = useRoute();
+  const navigation = useNavigation<ConnectBankScreenNavigationProp>();
+  const route = useRoute<ConnectBankScreenRouteProp>();
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('');
@@ -112,10 +117,13 @@ export default function ConnectBankScreen() {
         .eq('user_id', user.id)
         .eq('status', 'active')
         .is('disconnected_at', null)
+        .not('encrypted_access_token', 'is', null) // Only get connections with tokens
         .order('created_at', { ascending: false })
-        .limit(1);
+        .limit(1)
+        .single(); // Get single result to ensure we have exactly one or none
 
-      if (dbError) {
+      if (dbError && dbError.code !== 'PGRST116') {
+        // Ignore "no rows returned" error
         console.error('Failed to check bank connection:', dbError);
         setError('Failed to check bank connection');
         setStatus('error');
@@ -123,10 +131,10 @@ export default function ConnectBankScreen() {
         return;
       }
 
-      if (connections && connections.length > 0) {
-        addDebugInfo('Found active bank connection');
+      if (connections) {
+        addDebugInfo(`Found active bank connection: ${connections.id}`);
         setStatus('connected');
-        setConnectionId(connections[0].id);
+        setConnectionId(connections.id);
       } else {
         addDebugInfo('No active bank connection found');
         setStatus('disconnected');
@@ -277,18 +285,32 @@ export default function ConnectBankScreen() {
       setError(null);
       addDebugInfo('Starting bank disconnection process');
 
-      if (!connectionId) {
+      // Get the latest connection ID
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user found');
+
+      const { data: connection } = await supabase
+        .from('bank_connections')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .is('disconnected_at', null)
+        .single();
+
+      if (!connection) {
         throw new Error('No active connection found');
       }
 
-      await trueLayer.disconnectBank(connectionId);
+      await trueLayer.disconnectBank(connection.id);
       addDebugInfo('Bank disconnected and transactions cleared successfully');
 
       setStatus('disconnected');
       setConnectionId(null);
 
-      // Navigate back to Home screen
-      navigation.navigate('Home');
+      // Refresh the connection status
+      await checkBankConnection();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       addDebugInfo(`Error: ${errorMessage}`);
