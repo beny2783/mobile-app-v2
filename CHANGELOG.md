@@ -33,13 +33,13 @@
   - [x] Store account metadata separately from balances
   - [x] Fix balance storage issues
   - [x] Align schema with production environment
-- [ ] Enhance balance display UI
-  - [ ] Create collapsible bank account cards
-  - [ ] Group accounts by bank connection
-  - [ ] Show total balance per bank
-  - [ ] Add expand/collapse animations
-  - [ ] Improve visual hierarchy
-  - [ ] Update refresh mechanism for grouped view
+- [x] Enhance balance display UI
+  - [x] Create collapsible bank account cards
+  - [x] Group accounts by bank connection
+  - [x] Show total balance per bank
+  - [x] Add expand/collapse animations
+  - [x] Improve visual hierarchy
+  - [x] Update refresh mechanism for grouped view
 
 ## 💰 Phase 3: Transaction Management
 
