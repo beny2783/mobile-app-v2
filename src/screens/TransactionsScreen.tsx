@@ -16,17 +16,7 @@ import { TRUELAYER } from '../constants';
 import { colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabase';
-
-interface Transaction {
-  transaction_id: string;
-  timestamp: string;
-  description: string;
-  amount: number;
-  currency: string;
-  transaction_type: string;
-  transaction_category: string;
-  merchant_name?: string;
-}
+import { Transaction } from '../types';
 
 interface TransactionSection {
   title: string;
@@ -89,23 +79,16 @@ export default function TransactionsScreen() {
       setError(null);
       setLoading(true);
 
-      console.log('🔄 Fetching transactions...', {
-        from: dateRange.from.toISOString(),
-        to: dateRange.to.toISOString(),
-      });
-
       const data = await trueLayer.fetchTransactions(dateRange.from, dateRange.to);
 
       // If no data returned and no error, assume no active connection
       if (data.length === 0) {
-        console.log('No transactions found, clearing local data');
         setTransactions([]);
       } else {
-        console.log('✅ Fetch complete:', data.length, 'transactions');
         setTransactions(data);
       }
     } catch (error) {
-      console.error('💥 Failed to fetch transactions:', error);
+      console.error('Failed to fetch transactions:', error);
       setError('Failed to load transactions');
       setTransactions([]); // Clear transactions on error
     } finally {
@@ -115,20 +98,18 @@ export default function TransactionsScreen() {
   };
 
   const fetchCategories = async () => {
-    console.log('🔄 Fetching categories...');
     const { data, error } = await supabase
       .from('merchant_categories')
       .select('category')
       .is('user_id', null); // Get system-wide categories
 
     if (error) {
-      console.error('💥 Failed to fetch categories:', error);
+      console.error('Failed to fetch categories:', error);
       return;
     }
 
     // Get unique categories
     const uniqueCategories = Array.from(new Set(data.map((c) => c.category))).sort();
-    console.log('✅ Fetched categories:', uniqueCategories);
     setCategories(uniqueCategories);
   };
 
@@ -287,20 +268,24 @@ export default function TransactionsScreen() {
     </View>
   );
 
-  const renderTransaction = ({ item }: { item: Transaction }) => (
-    <View style={styles.transactionCard}>
-      <View style={styles.transactionHeader}>
-        <View style={styles.transactionInfo}>
-          <Text style={styles.merchantName}>{item.merchant_name || item.description}</Text>
-          <Text style={styles.transactionCategory}>{item.transaction_category}</Text>
+  const renderTransaction = ({ item }: { item: Transaction }) => {
+    return (
+      <View style={styles.transactionCard}>
+        <View style={styles.transactionHeader}>
+          <View style={styles.transactionInfo}>
+            <Text style={styles.description} numberOfLines={2}>
+              {item.description || 'Unknown Transaction'}
+            </Text>
+            <Text style={styles.transactionCategory}>{item.transaction_category}</Text>
+          </View>
+          <Text style={[styles.amount, { color: item.amount < 0 ? colors.error : colors.success }]}>
+            {item.currency} {Math.abs(item.amount).toFixed(2)}
+          </Text>
         </View>
-        <Text style={[styles.amount, { color: item.amount < 0 ? colors.error : colors.success }]}>
-          {item.currency} {Math.abs(item.amount).toFixed(2)}
-        </Text>
+        <Text style={styles.date}>{new Date(item.timestamp).toLocaleDateString()}</Text>
       </View>
-      <Text style={styles.date}>{new Date(item.timestamp).toLocaleDateString()}</Text>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -346,7 +331,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   transactionCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     padding: 16,
     marginHorizontal: 16,
     marginVertical: 8,
@@ -366,14 +351,16 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  merchantName: {
+  description: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
     color: colors.text.primary,
+    marginBottom: 4,
   },
   amount: {
     fontSize: 16,
     fontWeight: '600',
+    color: colors.text.primary,
   },
   date: {
     fontSize: 14,
@@ -381,7 +368,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   categoryContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     minHeight: 60,
@@ -474,7 +461,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -486,6 +473,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     fontSize: 16,
+    color: colors.text.primary,
   },
   transactionCategory: {
     fontSize: 12,

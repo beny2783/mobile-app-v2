@@ -30,10 +30,33 @@ begin
   delete from transactions
   where user_id = p_user_id;
 
+  -- Delete associated balances
+  delete from balances
+  where user_id = p_user_id
+  and connection_id = p_connection_id;
+
   return true;
 exception
   when others then
     raise notice 'Error in disconnect_bank: %', SQLERRM;
     return false;
 end;
-$$; 
+$$;
+
+-- Update balances table
+ALTER TABLE balances
+ADD COLUMN IF NOT EXISTS account_name text,
+ADD COLUMN IF NOT EXISTS available_balance numeric,
+ADD COLUMN IF NOT EXISTS update_timestamp timestamptz,
+ADD COLUMN IF NOT EXISTS account_type text,
+ADD COLUMN IF NOT EXISTS provider_name text,
+ADD COLUMN IF NOT EXISTS provider_logo_uri text;
+
+-- Rename current to balance if it exists
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name = 'balances' AND column_name = 'current') THEN
+    ALTER TABLE balances RENAME COLUMN current TO balance;
+  END IF;
+END $$; 

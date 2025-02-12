@@ -54,8 +54,15 @@ serve(async (req: Request) => {
 
         if (transactionsResponse.ok) {
           const accountTransactions = transactionsData.results.map((t: any) => ({
-            ...t,
+            transaction_id: t.transaction_id,
             account_id: account.account_id,
+            timestamp: t.timestamp,
+            description: t.description,
+            amount: t.amount,
+            currency: t.currency,
+            transaction_type: t.transaction_type,
+            transaction_category: t.transaction_category,
+            meta: t.meta,
           }));
           transactions.push(...accountTransactions);
         }

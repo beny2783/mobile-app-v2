@@ -17,6 +17,12 @@ CREATE TABLE IF NOT EXISTS transactions (
 -- Add RLS policies
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies
+DROP POLICY IF EXISTS "Users can view their own transactions" ON transactions;
+DROP POLICY IF EXISTS "Users can insert their own transactions" ON transactions;
+DROP POLICY IF EXISTS "Users can update their own transactions" ON transactions;
+
+-- Create new policies
 CREATE POLICY "Users can view their own transactions"
 ON transactions FOR SELECT
 USING (auth.uid() = user_id);

@@ -2,6 +2,7 @@ import { TRUELAYER } from '../constants';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { EncryptionService } from './encryption';
+import type { Transaction } from '../types';
 
 interface TrueLayerConfig {
   clientId: string;
@@ -9,16 +10,10 @@ interface TrueLayerConfig {
   enableMock?: boolean;
 }
 
-interface Transaction {
-  transaction_id: string;
-  account_id?: string;
-  timestamp: string;
-  description: string;
-  amount: number;
-  currency: string;
-  transaction_type: string;
-  transaction_category?: string;
-  merchant_name?: string;
+interface TokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
 }
 
 export class TrueLayerService {
@@ -361,8 +356,8 @@ export class TrueLayerService {
           currency: t.currency,
           transaction_type: t.transaction_type,
           transaction_category: matchingCategory?.category || 'Uncategorized',
-          merchant_name: t.merchant_name || null,
-        };
+          merchant_name: t.description, // Use description as merchant_name
+        } satisfies Transaction & { user_id: string };
       });
 
       // Store in database
@@ -428,20 +423,25 @@ export class TrueLayerService {
       console.log('📝 Raw transaction from API:', {
         sample: transactions[0],
         keys: Object.keys(transactions[0]),
+        description: transactions[0]?.description,
       });
 
       // Transform transactions to match our schema
-      const transformedTransactions = transactions.map((t: any) => ({
-        transaction_id: t.transaction_id,
-        account_id: t.account_id || t.account?.account_id || 'default',
-        timestamp: t.timestamp,
-        description: t.description,
-        amount: typeof t.amount === 'string' ? parseFloat(t.amount) : t.amount,
-        currency: t.currency,
-        transaction_type: t.transaction_type,
-        transaction_category: t.transaction_category || 'Uncategorized',
-        merchant_name: t.merchant_name,
-      }));
+      const transformedTransactions = transactions.map((t: any) => {
+        const transformed: Transaction = {
+          transaction_id: t.transaction_id,
+          account_id: t.account_id || t.account?.account_id || 'default',
+          timestamp: t.timestamp,
+          description: t.description,
+          amount: typeof t.amount === 'string' ? parseFloat(t.amount) : t.amount,
+          currency: t.currency,
+          transaction_type: t.transaction_type,
+          transaction_category: t.transaction_category || 'Uncategorized',
+          merchant_name: t.description, // Use description directly as merchant_name
+        };
+
+        return transformed;
+      });
 
       console.log('✅ Transformed transaction:', {
         sample: transformedTransactions[0],
@@ -467,7 +467,7 @@ export class TrueLayerService {
         throw new Error('No authenticated user found');
       }
 
-      // First update the connection status
+      // First update the connection status to prevent any new transactions
       const { error: updateError } = await supabase
         .from('bank_connections')
         .update({
@@ -484,7 +484,7 @@ export class TrueLayerService {
         throw new Error('Failed to disconnect bank');
       }
 
-      // Then delete associated transactions
+      // Then delete all transactions for this user
       const { error: deleteError } = await supabase
         .from('transactions')
         .delete()
@@ -495,7 +495,7 @@ export class TrueLayerService {
         throw new Error('Failed to delete transactions');
       }
 
-      console.log('✅ Bank disconnected successfully');
+      console.log('✅ Bank disconnected and transactions cleared successfully');
     } catch (error) {
       console.error('💥 Failed to disconnect bank:', error);
       throw error;
@@ -568,42 +568,136 @@ export class TrueLayerService {
 
   async getBalances() {
     try {
-      const token = await this.getStoredToken();
-      if (!token) throw new Error('No access token found');
+      console.log('🔄 Getting valid token...');
+      let accessToken: string;
+      try {
+        accessToken = await this.refreshTokenIfNeeded();
+      } catch (error) {
+        console.log('No active bank connection or token available');
+        return { accounts: { results: [] }, balances: [] };
+      }
 
-      const response = await fetch(`${this.loginUrl}/data/v1/accounts`, {
+      const { SUPABASE } = await import('../constants');
+
+      console.log('🔄 Calling fetch-balances function...');
+      const response = await fetch(`${SUPABASE.URL}/functions/v1/fetch-balances`, {
+        method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE.ANON_KEY}`,
         },
+        body: JSON.stringify({
+          access_token: accessToken,
+        }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch accounts');
+        const errorText = await response.text();
+        console.error('💥 Fetch balances failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+        });
+        throw new Error(`Failed to fetch balances: ${errorText}`);
       }
 
-      const accounts = await response.json();
+      const { accounts, balances } = await response.json();
 
-      // Get balance for each account
-      const balances = await Promise.all(
-        accounts.results.map(async (account: any) => {
-          const balanceResponse = await fetch(
-            `${this.loginUrl}/data/v1/accounts/${account.account_id}/balance`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: 'application/json',
-              },
-            }
-          );
+      // Log raw data from TrueLayer
+      console.log('🔍 Raw TrueLayer Data:', {
+        accountSample: {
+          account_id: accounts.results[0].account_id,
+          currency: accounts.results[0].currency,
+        },
+        balanceSample: {
+          current: balances[0].current,
+          available: balances[0].available,
+          currency: balances[0].currency,
+        },
+      });
 
-          if (!balanceResponse.ok) {
-            throw new Error('Failed to fetch balance');
-          }
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('No authenticated user found');
 
-          return balanceResponse.json();
-        })
-      );
+      // Get current active connection
+      const { data: connection } = await supabase
+        .from('bank_connections')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .is('disconnected_at', null)
+        .single();
+
+      if (!connection) throw new Error('No active connection found');
+
+      // First store account information
+      const accountRecords = accounts.results.map((account: any) => ({
+        user_id: user.id,
+        connection_id: connection.id,
+        account_id: account.account_id,
+        account_type: account.account_type,
+        account_name: account.display_name,
+        currency: account.currency,
+        last_updated: new Date().toISOString(),
+      }));
+
+      console.log('🔍 Storing account records:', {
+        count: accountRecords.length,
+        firstRecord: accountRecords[0],
+      });
+
+      const { error: accountError } = await supabase.from('bank_accounts').upsert(accountRecords, {
+        onConflict: 'user_id,connection_id,account_id',
+      });
+
+      if (accountError) {
+        console.error('❌ Failed to store account records:', accountError);
+        throw accountError;
+      }
+
+      console.log('✅ Successfully stored account records');
+
+      // Then store balance information - only include fields that exist in the balances table
+      const balanceRecords = accounts.results.map((account: any, index: number) => {
+        const balance = balances[index];
+        return {
+          user_id: user.id,
+          connection_id: connection.id,
+          account_id: account.account_id,
+          current: balance.current,
+          available: balance.available,
+          currency: balance.currency,
+        };
+      });
+
+      console.log('🔍 Storing balance records:', {
+        count: balanceRecords.length,
+        firstRecord: balanceRecords[0],
+        upsertConfig: {
+          table: 'balances',
+          onConflict: 'user_id,connection_id,account_id',
+        },
+      });
+
+      const { error: balanceError } = await supabase.from('balances').upsert(balanceRecords, {
+        onConflict: 'user_id,connection_id,account_id',
+      });
+
+      if (balanceError) {
+        console.error('❌ Failed to store balance records:', {
+          error: balanceError,
+          details: balanceError.details,
+          hint: balanceError.hint,
+          code: balanceError.code,
+          message: balanceError.message,
+        });
+        throw balanceError;
+      }
+
+      console.log('✅ Successfully stored balance records');
 
       return {
         accounts,

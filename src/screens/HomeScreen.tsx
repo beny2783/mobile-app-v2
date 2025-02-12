@@ -3,10 +3,9 @@ import { ScrollView, StyleSheet, View, ActivityIndicator } from 'react-native';
 import { Avatar, Button, Text, Card, IconButton } from 'react-native-paper';
 import { colors } from '../constants/theme';
 import AccountCard from '../components/AccountCard';
-import { TrueLayerService } from '../services/trueLayer';
-import { TRUELAYER } from '../constants';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../services/supabase';
 
 export default function HomeScreen() {
   const { user } = useAuth();
@@ -15,26 +14,48 @@ export default function HomeScreen() {
   const navigation = useNavigation();
 
   useEffect(() => {
-    fetchData();
+    checkBankConnection();
   }, []);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      // Refresh data when screen comes into focus
+      checkBankConnection();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  const checkBankConnection = async () => {
     try {
       setLoading(true);
-      const trueLayer = new TrueLayerService({
-        clientId: TRUELAYER.CLIENT_ID,
-        redirectUri: TRUELAYER.REDIRECT_URI,
-      });
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      const { accounts: accountsData, balances } = await trueLayer.getBalances();
-      setAccounts(
-        accountsData.results.map((account: any, index: number) => ({
-          ...account,
-          balance: balances[index].current,
-        }))
-      );
+      const { data: connections } = await supabase
+        .from('bank_connections')
+        .select('*')
+        .eq('user_id', user?.id)
+        .eq('status', 'active')
+        .is('disconnected_at', null)
+        .single();
+
+      if (!connections) {
+        setAccounts([]);
+        return;
+      }
+
+      // Get stored transactions
+      const { data: transactions } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user?.id);
+
+      setAccounts(transactions || []);
     } catch (error) {
-      console.error('Failed to fetch data:', error);
+      console.error('Failed to check bank connection:', error);
+      setAccounts([]);
     } finally {
       setLoading(false);
     }

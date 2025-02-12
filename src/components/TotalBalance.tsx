@@ -2,73 +2,112 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Text } from 'react-native-paper';
 import { colors } from '../constants/theme';
-import { TrueLayerService } from '../services/trueLayer';
+import { supabase } from '../services/supabase';
+
+interface Balance {
+  balance_id: string;
+  user_id: string;
+  account_id: string;
+  balance: number;
+  currency: string;
+  account_name: string;
+  created_at: string;
+}
 
 export default function TotalBalance() {
-  const [balanceData, setBalanceData] = useState<any>(null);
+  const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchBalances = async () => {
       try {
-        const trueLayer = new TrueLayerService({
-          clientId: TRUELAYER.CLIENT_ID,
-          redirectUri: TRUELAYER.REDIRECT_URI,
-        });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
 
-        const data = await trueLayer.getBalances();
-        setBalanceData(data);
-      } catch (error) {
-        console.error('Failed to fetch balance data:', error);
+        const { data, error: fetchError } = await supabase
+          .from('balances')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (fetchError) throw fetchError;
+
+        setBalances(data || []);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch balance data:', err);
+        setError('Failed to load balance data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchBalances();
   }, []);
 
   if (loading) {
-    return <ActivityIndicator />;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
-  // Calculate totals
-  const totalBalance = balanceData?.balances.reduce((sum: number, b: any) => sum + b.current, 0);
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.error}>{error}</Text>
+      </View>
+    );
+  }
+
+  // Calculate total balance
+  const totalBalance = balances.reduce((sum, b) => sum + b.balance, 0);
+
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP',
+    }).format(amount);
+  };
 
   return (
     <View style={styles.container}>
       <Text variant="titleMedium" style={styles.label}>
-        This month
+        Total Balance
       </Text>
       <Text variant="displayLarge" style={styles.balance}>
-        £{totalBalance?.toFixed(2)}
+        {formatCurrency(totalBalance)}
       </Text>
       <Text variant="bodyMedium" style={styles.subtitle}>
-        Today's Balance
+        Last updated:{' '}
+        {balances[0]?.created_at ? new Date(balances[0].created_at).toLocaleString() : 'Never'}
       </Text>
 
-      <View style={styles.breakdown}>
-        <View style={styles.breakdownItem}>
-          <Text variant="titleMedium" style={styles.breakdownLabel}>
-            Starting balance
-          </Text>
-          <Text variant="titleLarge" style={styles.positiveAmount}>
-            +£31,322.73
-          </Text>
-          <Text variant="bodySmall" style={styles.dateLabel}>
-            On 1st Feb
-          </Text>
+      {balances.length > 0 && (
+        <View style={styles.breakdown}>
+          {balances.map((balance) => (
+            <View key={balance.balance_id} style={styles.breakdownItem}>
+              <Text variant="titleMedium" style={styles.breakdownLabel}>
+                {balance.account_name}
+              </Text>
+              <Text
+                variant="titleLarge"
+                style={[
+                  styles.amount,
+                  { color: balance.balance >= 0 ? colors.success : colors.error },
+                ]}
+              >
+                {formatCurrency(balance.balance)}
+              </Text>
+            </View>
+          ))}
         </View>
-
-        <View style={styles.breakdownItem}>
-          <Text variant="titleMedium" style={styles.breakdownLabel}>
-            Total money in
-          </Text>
-          <Text variant="titleLarge" style={styles.positiveAmount}>
-            +£450.00
-          </Text>
-        </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -77,6 +116,27 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     backgroundColor: colors.surface,
+    borderRadius: 12,
+    margin: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  error: {
+    color: colors.error,
+    textAlign: 'center',
   },
   label: {
     color: colors.text.primary,
@@ -96,16 +156,15 @@ const styles = StyleSheet.create({
   },
   breakdownItem: {
     marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   breakdownLabel: {
     color: colors.text.primary,
-    marginBottom: 4,
+    flex: 1,
   },
-  positiveAmount: {
-    color: colors.success,
-    marginBottom: 4,
-  },
-  dateLabel: {
-    color: colors.text.secondary,
+  amount: {
+    fontWeight: 'bold',
   },
 });

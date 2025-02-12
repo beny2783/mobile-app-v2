@@ -1,7 +1,8 @@
 {
   "imports": {
     "http/": "https://deno.land/std@0.177.0/http/",
-    "cors": "../_shared/cors.ts"
+    "cors": "../_shared/cors.ts",
+    "http/server": "https://deno.land/std@0.168.0/http/server.ts"
   },
   "compilerOptions": {
     "allowJs": true,

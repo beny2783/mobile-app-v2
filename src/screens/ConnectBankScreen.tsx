@@ -174,9 +174,14 @@ export default function ConnectBankScreen() {
           try {
             await trueLayer.exchangeCode(code);
             addDebugInfo('Code exchange successful');
+
+            // Fetch initial transactions and balances
+            addDebugInfo('Fetching initial data...');
+            await Promise.all([trueLayer.fetchTransactions(), fetchAndStoreBalances()]);
+            addDebugInfo('Initial data fetched successfully');
+
             setStatus('connected');
-            // Refresh connection status
-            checkBankConnection();
+            navigation.navigate('Transactions');
           } catch (exchangeError) {
             console.error('Code exchange failed:', exchangeError);
             setError('Failed to complete bank connection');
@@ -195,6 +200,74 @@ export default function ConnectBankScreen() {
       console.error('Error connecting bank:', error);
       setError(`Failed to connect to bank: ${errorMessage}`);
       setStatus('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAndStoreBalances = async () => {
+    try {
+      addDebugInfo('Fetching balances...');
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) throw new Error('No authenticated user found');
+
+      // Get current active connection
+      const { data: connection } = await supabase
+        .from('bank_connections')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .is('disconnected_at', null)
+        .single();
+
+      if (!connection) throw new Error('No active connection found');
+
+      addDebugInfo(`Found active connection: ${connection.id}`);
+
+      // Fetch balances from TrueLayer
+      const { accounts, balances } = await trueLayer.getBalances();
+
+      addDebugInfo('Raw balance data:');
+      addDebugInfo(`Accounts: ${JSON.stringify(accounts.results, null, 2)}`);
+      addDebugInfo(`Balances: ${JSON.stringify(balances, null, 2)}`);
+
+      // Store balances in Supabase
+      const balanceRecords = accounts.results.map((account: any, index: number) => {
+        const record = {
+          user_id: user.id,
+          connection_id: connection.id,
+          account_id: account.account_id,
+          current: balances[index].current,
+          available: balances[index].available,
+          currency: balances[index].currency,
+        };
+
+        addDebugInfo(`Preparing balance record for account ${account.account_id}:`);
+        addDebugInfo(JSON.stringify(record, null, 2));
+
+        return record;
+      });
+
+      addDebugInfo(`Upserting ${balanceRecords.length} balance records...`);
+
+      const { error: insertError } = await supabase.from('balances').upsert(balanceRecords, {
+        onConflict: 'user_id,connection_id,account_id',
+      });
+
+      if (insertError) {
+        addDebugInfo(`Error storing balances: ${insertError.message}`);
+        throw insertError;
+      }
+
+      addDebugInfo('Balances stored successfully');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addDebugInfo(`Error in fetchAndStoreBalances: ${errorMessage}`);
+      console.error('Failed to fetch and store balances:', error);
+      throw error;
     }
   };
 
@@ -209,37 +282,20 @@ export default function ConnectBankScreen() {
       }
 
       await trueLayer.disconnectBank(connectionId);
+      addDebugInfo('Bank disconnected and transactions cleared successfully');
 
-      // Clear transactions from state
-      const {
-        data: { user },
-        error: deleteError,
-      } = await supabase.auth.getUser();
-      if (deleteError) {
-        console.error('Error deleting transactions:', deleteError);
-        throw new Error('Failed to delete transactions');
-      }
-
-      addDebugInfo(`Deleting transactions for user: ${user.id}`);
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('user_id', user.id);
-
-      if (transactionError) {
-        addDebugInfo(`Error deleting transactions: ${JSON.stringify(transactionError)}`);
-        throw new Error('Failed to delete transactions');
-      }
-
-      addDebugInfo('Transactions deleted successfully');
       setStatus('disconnected');
       setConnectionId(null);
-      addDebugInfo('Bank disconnected successfully');
+
+      // Navigate back to Home screen
+      navigation.navigate('Home');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       addDebugInfo(`Error: ${errorMessage}`);
       console.error('Error disconnecting bank:', error);
       setError(`Failed to disconnect bank: ${errorMessage}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -391,7 +447,13 @@ const styles = StyleSheet.create({
   },
   debugText: {
     fontSize: 12,
-    fontFamily: 'monospace',
+    color: colors.text.secondary,
+    padding: 16,
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace',
+    }),
   },
   errorContainer: {
     marginTop: 16,

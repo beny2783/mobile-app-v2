@@ -1,10 +1,12 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import HomeScreen from '../screens/HomeScreen';
+import ConnectBankScreen from '../screens/ConnectBankScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
+import BalancesScreen from '../screens/BalancesScreen';
 import CallbackScreen from '../screens/CallbackScreen';
 import { colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { AppTabParamList } from '../types/navigation';
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
@@ -31,12 +33,31 @@ export function TabNavigator() {
       }}
     >
       <Tab.Screen
-        name="Home"
-        component={HomeScreen}
+        name="ConnectBank"
+        component={ConnectBankScreen}
         options={{
-          title: 'Home',
+          title: 'Bank',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+            <Ionicons name="wallet-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Balances"
+        component={BalancesScreen}
+        options={{
+          title: 'Balances',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cash-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Transactions"
+        component={TransactionsScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="list-outline" size={size} color={color} />
           ),
         }}
       />
@@ -47,15 +68,6 @@ export function TabNavigator() {
           title: 'Profile',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Transactions"
-        component={TransactionsScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="list-outline" size={size} color={color} />
           ),
         }}
       />
