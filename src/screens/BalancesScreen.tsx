@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, RefreshControl, ScrollView } from 'react-native';
-import { Text, Card, ActivityIndicator } from 'react-native-paper';
+import { Text, ActivityIndicator } from 'react-native-paper';
 import { supabase } from '../services/supabase';
 import { colors } from '../constants/theme';
+import BankCard from '../components/BankCard';
 
 interface BankAccount {
   id: string;
@@ -19,8 +20,20 @@ interface BankAccount {
   available: number;
 }
 
+interface BankConnection {
+  id: string;
+  provider: string;
+  status: string;
+  created_at: string;
+}
+
+interface GroupedAccounts {
+  connection: BankConnection;
+  accounts: BankAccount[];
+}
+
 export default function BalancesScreen() {
-  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [groupedAccounts, setGroupedAccounts] = useState<GroupedAccounts[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,63 +45,66 @@ export default function BalancesScreen() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // First, check the bank connection
-      const { data: connection, error: connectionError } = await supabase
+      // First, get active bank connections
+      const { data: connections, error: connectionError } = await supabase
         .from('bank_connections')
         .select('*')
         .eq('user_id', user.id)
         .eq('status', 'active')
-        .is('disconnected_at', null)
-        .single();
+        .is('disconnected_at', null);
 
       if (connectionError) {
-        console.error('Error fetching bank connection:', connectionError);
+        console.error('Error fetching bank connections:', connectionError);
         throw connectionError;
       }
 
-      // Then fetch accounts with their balances
-      const { data: accounts, error: accountsError } = await supabase
-        .from('bank_accounts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('connection_id', connection.id)
-        .order('created_at', { ascending: false });
+      // For each connection, fetch accounts and balances
+      const accountsPromises = connections.map(async (connection) => {
+        const { data: accounts, error: accountsError } = await supabase
+          .from('bank_accounts')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('connection_id', connection.id);
 
-      if (accountsError) {
-        console.error('Error fetching accounts:', accountsError);
-        throw accountsError;
-      }
+        if (accountsError) {
+          console.error('Error fetching accounts:', accountsError);
+          throw accountsError;
+        }
 
-      // Fetch balances separately
-      const { data: balances, error: balancesError } = await supabase
-        .from('balances')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('connection_id', connection.id);
+        const { data: balances, error: balancesError } = await supabase
+          .from('balances')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('connection_id', connection.id);
 
-      if (balancesError) {
-        console.error('Error fetching balances:', balancesError);
-        throw balancesError;
-      }
+        if (balancesError) {
+          console.error('Error fetching balances:', balancesError);
+          throw balancesError;
+        }
 
-      // Combine the data
-      const transformedAccounts = (accounts || []).map((account) => {
-        const accountBalance = balances?.find(
-          (balance) => balance.account_id === account.account_id
-        );
+        // Combine accounts with their balances
+        const accountsWithBalances = accounts.map((account) => {
+          const balance = balances?.find((b) => b.account_id === account.account_id);
+          return {
+            ...account,
+            current: balance?.current || 0,
+            available: balance?.available || 0,
+          };
+        });
+
         return {
-          ...account,
-          current: accountBalance?.current || 0,
-          available: accountBalance?.available || 0,
+          connection,
+          accounts: accountsWithBalances,
         };
       });
 
-      setAccounts(transformedAccounts);
+      const groupedResults = await Promise.all(accountsPromises);
+      setGroupedAccounts(groupedResults);
       setError(null);
     } catch (err) {
       console.error('Error fetching accounts:', err);
       setError('Failed to load accounts');
-      setAccounts([]); // Clear accounts on error
+      setGroupedAccounts([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -104,12 +120,18 @@ export default function BalancesScreen() {
     fetchAccounts();
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount);
+  const formatBankName = (connection: BankConnection) => {
+    // In production, this would use the actual bank name from the provider
+    // For now, we'll use a placeholder
+    return 'My Bank';
   };
+
+  // Calculate total balance across all accounts
+  const totalBalance = groupedAccounts.reduce(
+    (total, group) =>
+      total + group.accounts.reduce((sum, account) => sum + (account.current || 0), 0),
+    0
+  );
 
   if (loading) {
     return (
@@ -127,9 +149,6 @@ export default function BalancesScreen() {
     );
   }
 
-  // Calculate total balance using current balance
-  const totalBalance = accounts.reduce((sum, account) => sum + (account.current || 0), 0);
-
   return (
     <ScrollView
       style={styles.container}
@@ -138,51 +157,23 @@ export default function BalancesScreen() {
       <View style={styles.totalContainer}>
         <Text style={styles.totalLabel}>Total Balance</Text>
         <Text style={styles.totalAmount}>
-          {formatCurrency(totalBalance, accounts[0]?.currency || 'GBP')}
+          {new Intl.NumberFormat('en-GB', {
+            style: 'currency',
+            currency: 'GBP',
+          }).format(totalBalance)}
         </Text>
       </View>
 
-      {accounts.map((account) => (
-        <Card key={account.id} style={styles.card}>
-          <Card.Content>
-            <View style={styles.accountHeader}>
-              <View style={styles.accountInfo}>
-                <Text variant="titleMedium" style={styles.accountName}>
-                  {account.account_name}
-                </Text>
-                <Text variant="bodySmall" style={styles.accountType}>
-                  {account.account_type}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.balanceContainer}>
-              <View style={styles.balanceItem}>
-                <Text variant="bodySmall" style={styles.balanceLabel}>
-                  Current Balance
-                </Text>
-                <Text variant="headlineMedium" style={styles.balance}>
-                  {formatCurrency(account.current || 0, account.currency)}
-                </Text>
-              </View>
-              <View style={styles.balanceItem}>
-                <Text variant="bodySmall" style={styles.balanceLabel}>
-                  Available
-                </Text>
-                <Text variant="headlineMedium" style={styles.balance}>
-                  {formatCurrency(account.available || 0, account.currency)}
-                </Text>
-              </View>
-            </View>
-
-            <Text variant="bodySmall" style={styles.updated}>
-              Last updated: {new Date(account.last_updated || account.updated_at).toLocaleString()}
-            </Text>
-          </Card.Content>
-        </Card>
+      {groupedAccounts.map((group) => (
+        <BankCard
+          key={group.connection.id}
+          bankName={formatBankName(group.connection)}
+          accounts={group.accounts}
+          onRefresh={onRefresh}
+        />
       ))}
 
-      {accounts.length === 0 && (
+      {groupedAccounts.length === 0 && (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No accounts found</Text>
           <Text style={styles.emptySubtext}>Connect a bank account to see your balances</Text>
@@ -201,49 +192,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  card: {
-    margin: 16,
-    elevation: 4,
-    backgroundColor: colors.surface,
-  },
-  accountHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  accountInfo: {
-    flex: 1,
-  },
-  accountName: {
-    color: colors.text.primary,
-    fontWeight: '600',
-  },
-  accountType: {
-    color: colors.text.secondary,
-    marginTop: 4,
-  },
-  balanceContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 16,
-  },
-  balanceItem: {
-    flex: 1,
-  },
-  balanceLabel: {
-    color: colors.text.secondary,
-    marginBottom: 4,
-  },
-  balance: {
-    color: colors.text.primary,
-    fontWeight: 'bold',
-  },
-  updated: {
-    color: colors.text.secondary,
-    fontSize: 12,
   },
   error: {
     color: colors.error,
