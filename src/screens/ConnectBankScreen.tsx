@@ -22,6 +22,19 @@ import { Button } from 'react-native-paper';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
+interface BankConnection {
+  id: string;
+  provider: string;
+  status: string;
+  created_at: string;
+  bank_name?: string;
+  logo_url?: string;
+  last_sync_status?: string;
+  account_count?: number;
+  last_sync?: string;
+  bank_accounts?: { count: number }[];
+}
+
 // Create TrueLayer service instance outside component
 const trueLayer = new TrueLayerService({
   clientId: TRUELAYER.CLIENT_ID || '',
@@ -36,20 +49,20 @@ export default function ConnectBankScreen() {
   const route = useRoute<ConnectBankScreenRouteProp>();
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string>('');
-  const [connectionId, setConnectionId] = useState<string | null>(null);
+  const [connections, setConnections] = useState<BankConnection[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Add this function to log debug info
-  const addDebugInfo = (info: string) => {
-    setDebugInfo((prev) => `${prev}\n${new Date().toISOString()}: ${info}`);
-    console.log(`Debug: ${info}`);
+  // Keep logging functionality but remove UI display
+  const logDebugInfo = (info: string) => {
+    if (__DEV__) {
+      console.log(`Debug: ${info}`);
+    }
   };
 
   useEffect(() => {
     // Log environment info on mount
-    addDebugInfo(`Environment: ${__DEV__ ? 'Development' : 'Production'}`);
-    addDebugInfo(
+    logDebugInfo(`Environment: ${__DEV__ ? 'Development' : 'Production'}`);
+    logDebugInfo(
       `TrueLayer Config: ${JSON.stringify(
         {
           clientId: TRUELAYER.CLIENT_ID ? 'provided' : 'missing',
@@ -70,6 +83,7 @@ export default function ConnectBankScreen() {
         // Check for success/error from callback first
         if (route.params?.success) {
           setStatus('connected');
+          await checkBankConnection();
           setLoading(false);
           return;
         }
@@ -87,6 +101,7 @@ export default function ConnectBankScreen() {
         console.error('Failed to initialize:', error);
         setError('Failed to check bank connection');
         setStatus('error');
+      } finally {
         setLoading(false);
       }
     };
@@ -96,12 +111,13 @@ export default function ConnectBankScreen() {
 
   const checkBankConnection = async () => {
     try {
-      addDebugInfo('Checking bank connection status...');
+      logDebugInfo('Checking bank connection status...');
 
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
-      addDebugInfo(`User ID: ${user?.id}`);
+      logDebugInfo(`User ID: ${user?.id}`);
 
       if (!user) {
         setError('Please log in first');
@@ -110,41 +126,53 @@ export default function ConnectBankScreen() {
         return;
       }
 
-      // Check for active bank connection
-      const { data: connections, error: dbError } = await supabase
+      // Query active connections directly
+      const { data: activeConnections, error: dbError } = await supabase
         .from('bank_connections')
-        .select('*')
+        .select(
+          `
+          *,
+          bank_accounts:bank_accounts(count)
+        `
+        )
         .eq('user_id', user.id)
         .eq('status', 'active')
         .is('disconnected_at', null)
-        .not('encrypted_access_token', 'is', null) // Only get connections with tokens
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single(); // Get single result to ensure we have exactly one or none
+        .not('encrypted_access_token', 'is', null)
+        .order('created_at', { ascending: false });
 
-      if (dbError && dbError.code !== 'PGRST116') {
-        // Ignore "no rows returned" error
-        console.error('Failed to check bank connection:', dbError);
-        setError('Failed to check bank connection');
+      if (dbError) {
+        console.error('Failed to check bank connections:', dbError);
+        setError('Failed to check bank connections');
         setStatus('error');
         setLoading(false);
         return;
       }
 
-      if (connections) {
-        addDebugInfo(`Found active bank connection: ${connections.id}`);
+      if (activeConnections && activeConnections.length > 0) {
+        logDebugInfo(`Found ${activeConnections.length} active bank connections`);
+        // Transform the data to match the expected format
+        const transformedConnections = activeConnections.map((conn) => ({
+          ...conn,
+          last_sync_status: !conn.last_sync
+            ? 'pending'
+            : new Date(conn.last_sync) < new Date(Date.now() - 24 * 60 * 60 * 1000)
+              ? 'needs_update'
+              : 'success',
+          account_count: conn.bank_accounts?.[0]?.count || 0,
+        }));
+        setConnections(transformedConnections);
         setStatus('connected');
-        setConnectionId(connections.id);
       } else {
-        addDebugInfo('No active bank connection found');
+        logDebugInfo('No active bank connections found');
         setStatus('disconnected');
-        setConnectionId(null);
+        setConnections([]);
       }
 
       setLoading(false);
     } catch (error) {
-      console.error('Failed to check bank connection:', error);
-      setError('Failed to check bank connection');
+      console.error('Failed to check bank connections:', error);
+      setError('Failed to check bank connections');
       setStatus('error');
       setLoading(false);
     }
@@ -155,10 +183,10 @@ export default function ConnectBankScreen() {
       setLoading(true);
       setError(null);
       setStatus('connecting');
-      addDebugInfo('Starting bank connection process');
+      logDebugInfo('Starting bank connection process');
 
       const authUrl = trueLayer.getAuthUrl();
-      addDebugInfo(`Generated Auth URL: ${authUrl}`);
+      logDebugInfo(`Generated Auth URL: ${authUrl}`);
 
       await WebBrowser.warmUpAsync();
 
@@ -171,23 +199,24 @@ export default function ConnectBankScreen() {
         }
       );
 
-      addDebugInfo(`WebBrowser result: ${JSON.stringify(result)}`);
+      logDebugInfo(`WebBrowser result: ${JSON.stringify(result)}`);
 
       if (result.type === 'success' && result.url) {
         const url = new URL(result.url);
         const code = url.searchParams.get('code');
 
         if (code) {
-          addDebugInfo(`Got code: ${code.substring(0, 10)}...`);
+          logDebugInfo(`Got code: ${code.substring(0, 10)}...`);
           try {
             await trueLayer.exchangeCode(code);
-            addDebugInfo('Code exchange successful');
+            logDebugInfo('Code exchange successful');
 
             // Fetch initial transactions and balances
-            addDebugInfo('Fetching initial data...');
+            logDebugInfo('Fetching initial data...');
             await Promise.all([trueLayer.fetchTransactions(), fetchAndStoreBalances()]);
-            addDebugInfo('Initial data fetched successfully');
+            logDebugInfo('Initial data fetched successfully');
 
+            await checkBankConnection();
             setStatus('connected');
             navigation.navigate('Transactions');
           } catch (exchangeError) {
@@ -204,7 +233,7 @@ export default function ConnectBankScreen() {
       await WebBrowser.coolDownAsync();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      addDebugInfo(`Error: ${errorMessage}`);
+      logDebugInfo(`Error: ${errorMessage}`);
       console.error('Error connecting bank:', error);
       setError(`Failed to connect to bank: ${errorMessage}`);
       setStatus('error');
@@ -215,7 +244,7 @@ export default function ConnectBankScreen() {
 
   const fetchAndStoreBalances = async () => {
     try {
-      addDebugInfo('Fetching balances...');
+      logDebugInfo('Fetching balances...');
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -233,14 +262,14 @@ export default function ConnectBankScreen() {
 
       if (!connection) throw new Error('No active connection found');
 
-      addDebugInfo(`Found active connection: ${connection.id}`);
+      logDebugInfo(`Found active connection: ${connection.id}`);
 
       // Fetch balances from TrueLayer
       const { accounts, balances } = await trueLayer.getBalances();
 
-      addDebugInfo('Raw balance data:');
-      addDebugInfo(`Accounts: ${JSON.stringify(accounts.results, null, 2)}`);
-      addDebugInfo(`Balances: ${JSON.stringify(balances, null, 2)}`);
+      logDebugInfo('Raw balance data:');
+      logDebugInfo(`Accounts: ${JSON.stringify(accounts.results, null, 2)}`);
+      logDebugInfo(`Balances: ${JSON.stringify(balances, null, 2)}`);
 
       // Store balances in Supabase
       const balanceRecords = accounts.results.map((account: any, index: number) => {
@@ -253,67 +282,45 @@ export default function ConnectBankScreen() {
           currency: balances[index].currency,
         };
 
-        addDebugInfo(`Preparing balance record for account ${account.account_id}:`);
-        addDebugInfo(JSON.stringify(record, null, 2));
+        logDebugInfo(`Preparing balance record for account ${account.account_id}:`);
+        logDebugInfo(JSON.stringify(record, null, 2));
 
         return record;
       });
 
-      addDebugInfo(`Upserting ${balanceRecords.length} balance records...`);
+      logDebugInfo(`Upserting ${balanceRecords.length} balance records...`);
 
       const { error: insertError } = await supabase.from('balances').upsert(balanceRecords, {
         onConflict: 'user_id,connection_id,account_id',
       });
 
       if (insertError) {
-        addDebugInfo(`Error storing balances: ${insertError.message}`);
+        logDebugInfo(`Error storing balances: ${insertError.message}`);
         throw insertError;
       }
 
-      addDebugInfo('Balances stored successfully');
+      logDebugInfo('Balances stored successfully');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      addDebugInfo(`Error in fetchAndStoreBalances: ${errorMessage}`);
+      logDebugInfo(`Error in fetchAndStoreBalances: ${errorMessage}`);
       console.error('Failed to fetch and store balances:', error);
       throw error;
     }
   };
 
-  const handleDisconnectBank = async () => {
+  const handleDisconnectBank = async (connectionId: string) => {
     try {
       setLoading(true);
       setError(null);
-      addDebugInfo('Starting bank disconnection process');
+      logDebugInfo('Starting bank disconnection process');
 
-      // Get the latest connection ID
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error('No authenticated user found');
+      await trueLayer.disconnectBank(connectionId);
+      logDebugInfo('Bank disconnected and transactions cleared successfully');
 
-      const { data: connection } = await supabase
-        .from('bank_connections')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .is('disconnected_at', null)
-        .single();
-
-      if (!connection) {
-        throw new Error('No active connection found');
-      }
-
-      await trueLayer.disconnectBank(connection.id);
-      addDebugInfo('Bank disconnected and transactions cleared successfully');
-
-      setStatus('disconnected');
-      setConnectionId(null);
-
-      // Refresh the connection status
       await checkBankConnection();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      addDebugInfo(`Error: ${errorMessage}`);
+      logDebugInfo(`Error: ${errorMessage}`);
       console.error('Error disconnecting bank:', error);
       setError(`Failed to disconnect bank: ${errorMessage}`);
     } finally {
@@ -324,105 +331,165 @@ export default function ConnectBankScreen() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#87CEEB" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <View style={styles.header}>
-          <Ionicons name="wallet-outline" size={24} color={colors.primary} />
-          <Text style={styles.title}>Connect Your Bank</Text>
-        </View>
-
-        <Text style={styles.description}>
-          Connect your bank account to automatically track your spending and manage your finances.
-        </Text>
-
-        <View style={styles.statusContainer}>
-          <View style={[styles.statusDot, styles[status]]} />
-          <Text style={styles.statusText}>
-            {status === 'disconnected' && 'Not connected'}
-            {status === 'connecting' && 'Connecting...'}
-            {status === 'connected' && 'Connected'}
-            {status === 'error' && 'Connection failed'}
-          </Text>
-        </View>
-
-        <View style={styles.buttonContainer}>
-          {status === 'connected' ? (
-            <TouchableOpacity
-              style={[styles.button, styles.disconnectButton]}
-              onPress={handleDisconnectBank}
-            >
-              <Text style={styles.buttonText}>Disconnect Bank</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.button, status === 'connecting' && styles.buttonDisabled]}
-              onPress={handleConnectBank}
-              disabled={status === 'connecting'}
-            >
-              <Text style={styles.buttonText}>
-                {status === 'connecting' ? 'Connecting...' : 'Connect Bank'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Ionicons name="wallet-outline" size={24} color="#87CEEB" />
+        <Text style={styles.title}>Connect Your Banks</Text>
       </View>
+
+      <Text style={styles.description}>
+        Connect multiple bank accounts to automatically track your spending and manage your finances
+        across all your accounts.
+      </Text>
+
+      {/* Connected Banks Section */}
+      {connections.length > 0 && (
+        <View style={styles.connectionsContainer}>
+          <Text style={styles.sectionTitle}>Connected Banks</Text>
+          {connections.map((connection) => (
+            <View key={connection.id} style={styles.connectionCard}>
+              <View style={styles.connectionHeader}>
+                <View style={styles.bankInfo}>
+                  <View style={styles.bankNameContainer}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor:
+                            connection.last_sync_status === 'success' ? '#4CAF50' : '#FFA726',
+                        },
+                      ]}
+                    />
+                    <Text style={styles.bankName}>
+                      {connection.bank_name ||
+                        `${connection.provider.charAt(0).toUpperCase()}${connection.provider.slice(1)} Bank`}
+                    </Text>
+                  </View>
+                  <Text style={styles.connectionStatus}>
+                    {connection.last_sync_status === 'success'
+                      ? 'Connected'
+                      : 'Connection needs update'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.disconnectButton}
+                  onPress={() => handleDisconnectBank(connection.id)}
+                >
+                  <Text style={styles.disconnectButtonText}>Disconnect</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.connectionDetails}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Accounts Connected:</Text>
+                  <Text style={styles.detailValue}>
+                    {connection.account_count}{' '}
+                    {connection.account_count === 1 ? 'account' : 'accounts'}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Last Updated:</Text>
+                  <Text style={styles.detailValue}>
+                    {connection.last_sync
+                      ? new Date(connection.last_sync).toLocaleDateString()
+                      : 'Never'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Add New Bank Section */}
+      <Text style={styles.sectionTitle}>Add Another Bank</Text>
+      <View style={styles.addBankCard}>
+        <TouchableOpacity
+          style={styles.connectButton}
+          onPress={handleConnectBank}
+          disabled={status === 'connecting'}
+        >
+          <View style={styles.connectButtonContent}>
+            <Ionicons name="add-circle-outline" size={24} color="#FFFFFF" />
+            <Text style={styles.connectButtonText}>Connect Bank</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
       {error && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
       )}
-      {__DEV__ && (
-        <ScrollView style={styles.debugContainer}>
-          <Text style={styles.debugText}>{debugInfo}</Text>
-        </ScrollView>
-      )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: colors.background,
+    backgroundColor: '#0A1A2F',
   },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 20,
+    paddingBottom: 12,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '600',
+    marginLeft: 12,
+    color: '#FFFFFF',
+  },
+  description: {
+    fontSize: 16,
+    color: '#A0A7B5',
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    lineHeight: 24,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 16,
+    paddingHorizontal: 20,
+  },
+  connectionsContainer: {
+    marginBottom: 24,
+  },
+  connectionCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
-  header: {
+  connectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  bankInfo: {
+    flex: 1,
+  },
+  bankNameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginLeft: 12,
-    color: colors.text.primary,
-  },
-  description: {
-    fontSize: 16,
-    color: colors.text.secondary,
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 4,
   },
   statusDot: {
     width: 8,
@@ -430,67 +497,79 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginRight: 8,
   },
-  disconnected: {
-    backgroundColor: colors.text.secondary,
+  bankName: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#0A1A2F',
   },
-  connecting: {
-    backgroundColor: colors.secondary,
-  },
-  connected: {
-    backgroundColor: colors.success,
-  },
-  error: {
-    backgroundColor: colors.error,
-  },
-  statusText: {
+  connectionStatus: {
     fontSize: 14,
-    color: colors.text.secondary,
+    color: '#666666',
+    marginLeft: 16,
   },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
+  connectionDetails: {
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    paddingTop: 12,
+    marginTop: 4,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  detailValue: {
+    fontSize: 14,
+    color: '#0A1A2F',
+    fontWeight: '500',
+  },
+  disconnectButton: {
+    backgroundColor: '#FF5252',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  disconnectButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  addBankCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    borderRadius: 16,
     padding: 16,
+  },
+  connectButton: {
+    backgroundColor: '#87CEEB',
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
   },
-  buttonDisabled: {
-    backgroundColor: colors.border,
+  connectButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  buttonText: {
-    color: '#fff',
+  connectButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
-  debugContainer: {
-    marginTop: 20,
-    padding: 10,
-    backgroundColor: '#f0f0f0',
-    maxHeight: 200,
-    width: '100%',
-  },
-  debugText: {
-    fontSize: 12,
-    color: colors.text.secondary,
-    padding: 16,
-    fontFamily: Platform.select({
-      ios: 'Menlo',
-      android: 'monospace',
-      default: 'monospace',
-    }),
-  },
   errorContainer: {
-    marginTop: 16,
+    marginHorizontal: 20,
+    marginBottom: 24,
     padding: 12,
     backgroundColor: '#FFE5E5',
     borderRadius: 8,
   },
   errorText: {
-    color: colors.error,
+    color: '#FF5252',
     fontSize: 14,
-  },
-  buttonContainer: {
-    marginTop: 16,
-  },
-  disconnectButton: {
-    backgroundColor: colors.error,
   },
 });

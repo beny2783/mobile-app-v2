@@ -33,13 +33,52 @@
   - [x] Store account metadata separately from balances
   - [x] Fix balance storage issues
   - [x] Align schema with production environment
-- [x] Enhance balance display UI
-  - [x] Create collapsible bank account cards
-  - [x] Group accounts by bank connection
-  - [x] Show total balance per bank
-  - [x] Add expand/collapse animations
-  - [x] Improve visual hierarchy
-  - [x] Update refresh mechanism for grouped view
+
+## 🏦 Phase 2.1: Multiple Bank Connections
+
+- [x] Database Updates
+
+  - [x] Remove single connection constraint
+  - [x] Update bank_connections table schema
+    - [x] Add bank_name and logo_url
+    - [x] Add sync status tracking
+    - [x] Add sync frequency control
+  - [x] Add indices for better query performance
+    - [x] Partial index for active connections
+    - [x] Compound indices for accounts and balances
+  - [x] Update RLS policies for multiple connections
+  - [x] Improve disconnect_bank function
+  - [x] Add helper functions for connection management
+
+- [ ] TrueLayer Service Updates
+
+  - [ ] Remove auto-disconnection of other banks
+  - [ ] Update token storage logic
+  - [ ] Modify balance fetching for multiple connections
+  - [ ] Update transaction syncing for multiple banks
+
+- [ ] Connect Banks Screen Updates
+
+  - [ ] Show list of connected banks
+  - [ ] Add individual disconnect buttons
+  - [ ] Update connection status indicators
+  - [ ] Modify connect flow for multiple banks
+  - [ ] Add error handling for multiple connections
+
+- [ ] Balances Screen Updates
+
+  - [ ] Group accounts by bank
+  - [ ] Show per-bank totals
+  - [ ] Update total balance calculation
+  - [ ] Improve empty state UI
+  - [ ] Add refresh mechanism for all connections
+
+- [ ] Testing & Validation
+  - [ ] Test connecting multiple banks
+  - [ ] Verify balance aggregation
+  - [ ] Test disconnection flow
+  - [ ] Validate transaction syncing
+  - [ ] Check error handling
 
 ## 💰 Phase 3: Transaction Management
 

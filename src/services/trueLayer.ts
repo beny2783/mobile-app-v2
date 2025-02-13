@@ -361,6 +361,11 @@ export class TrueLayerService {
       });
 
       // Store in database
+      console.log('💾 Attempting to store transactions:', {
+        count: transformedTransactions.length,
+        sample: transformedTransactions[0],
+      });
+
       const { error: insertError } = await supabase
         .from('transactions')
         .upsert(transformedTransactions, {
@@ -369,9 +374,18 @@ export class TrueLayerService {
         });
 
       if (insertError) {
-        console.error('💥 Failed to store transactions:', insertError);
+        console.error('💥 Failed to store transactions:', {
+          error: insertError,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+        });
         return freshTransactions;
       }
+
+      console.log('✅ Successfully stored transactions:', {
+        count: transformedTransactions.length,
+      });
 
       return transformedTransactions;
     } catch (error) {
@@ -568,18 +582,15 @@ export class TrueLayerService {
 
   async getBalances() {
     try {
-      console.log('🔄 Getting valid token...');
       let accessToken: string;
       try {
         accessToken = await this.refreshTokenIfNeeded();
       } catch (error) {
-        console.log('No active bank connection or token available');
         return { accounts: { results: [] }, balances: [] };
       }
 
       const { SUPABASE } = await import('../constants');
 
-      console.log('🔄 Calling fetch-balances function...');
       const response = await fetch(`${SUPABASE.URL}/functions/v1/fetch-balances`, {
         method: 'POST',
         headers: {
@@ -593,7 +604,7 @@ export class TrueLayerService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('💥 Fetch balances failed:', {
+        console.error('Failed to fetch balances:', {
           status: response.status,
           statusText: response.statusText,
           error: errorText,
@@ -602,19 +613,6 @@ export class TrueLayerService {
       }
 
       const { accounts, balances } = await response.json();
-
-      // Log raw data from TrueLayer
-      console.log('🔍 Raw TrueLayer Data:', {
-        accountSample: {
-          account_id: accounts.results[0].account_id,
-          currency: accounts.results[0].currency,
-        },
-        balanceSample: {
-          current: balances[0].current,
-          available: balances[0].available,
-          currency: balances[0].currency,
-        },
-      });
 
       const {
         data: { user },
@@ -644,23 +642,16 @@ export class TrueLayerService {
         last_updated: new Date().toISOString(),
       }));
 
-      console.log('🔍 Storing account records:', {
-        count: accountRecords.length,
-        firstRecord: accountRecords[0],
-      });
-
       const { error: accountError } = await supabase.from('bank_accounts').upsert(accountRecords, {
         onConflict: 'user_id,connection_id,account_id',
       });
 
       if (accountError) {
-        console.error('❌ Failed to store account records:', accountError);
+        console.error('Failed to store account records:', accountError);
         throw accountError;
       }
 
-      console.log('✅ Successfully stored account records');
-
-      // Then store balance information - only include fields that exist in the balances table
+      // Store balance information
       const balanceRecords = accounts.results.map((account: any, index: number) => {
         const balance = balances[index];
         return {
@@ -673,31 +664,14 @@ export class TrueLayerService {
         };
       });
 
-      console.log('🔍 Storing balance records:', {
-        count: balanceRecords.length,
-        firstRecord: balanceRecords[0],
-        upsertConfig: {
-          table: 'balances',
-          onConflict: 'user_id,connection_id,account_id',
-        },
-      });
-
       const { error: balanceError } = await supabase.from('balances').upsert(balanceRecords, {
         onConflict: 'user_id,connection_id,account_id',
       });
 
       if (balanceError) {
-        console.error('❌ Failed to store balance records:', {
-          error: balanceError,
-          details: balanceError.details,
-          hint: balanceError.hint,
-          code: balanceError.code,
-          message: balanceError.message,
-        });
+        console.error('Failed to store balance records:', balanceError);
         throw balanceError;
       }
-
-      console.log('✅ Successfully stored balance records');
 
       return {
         accounts,
