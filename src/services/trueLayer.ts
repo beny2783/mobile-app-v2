@@ -53,23 +53,30 @@ export class TrueLayerService {
   }
 
   getAuthUrl(): string {
+    // In development, use mock provider for testing
+    // In production, use real UK bank providers
+    const isDev = __DEV__;
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: this.clientId,
-      redirect_uri: this.redirectUri, // This should match exactly
+      redirect_uri: this.redirectUri,
       scope: 'info accounts balance cards transactions',
-      providers: 'mock',
-      enable_mock: 'true',
-      disable_providers: 'true',
-      enable_oauth_providers: 'false',
-      enable_open_banking_providers: 'false',
+      providers: isDev ? 'mock' : 'uk-ob-all uk-oauth-all',
+      enable_mock: isDev ? 'true' : 'false',
+      enable_oauth_providers: isDev ? 'false' : 'true',
+      enable_open_banking_providers: isDev ? 'false' : 'true',
       enable_credentials_sharing_providers: 'false',
-      test_provider: 'mock',
-      debug: 'true',
+      disable_providers: isDev ? 'true' : 'false',
+      test_provider: isDev ? 'mock' : undefined,
     });
 
     const authUrl = `${this.baseUrl}/?${params.toString()}`;
-    console.log('Final Auth URL:', authUrl);
+    console.log('🔗 Generated TrueLayer Auth URL:', {
+      url: authUrl,
+      isDev,
+      redirectUri: this.redirectUri,
+      baseUrl: this.baseUrl,
+    });
     return authUrl;
   }
 
@@ -109,7 +116,7 @@ export class TrueLayerService {
           Accept: 'application/json',
           'Cache-Control': 'no-cache',
           'X-Debug': 'true',
-          'X-TL-Environment': 'sandbox',
+          'X-TL-Environment': __DEV__ ? 'sandbox' : 'live',
         },
         body: {
           ...requestBody,
@@ -125,7 +132,7 @@ export class TrueLayerService {
           Accept: 'application/json',
           'Cache-Control': 'no-cache',
           'X-Debug': 'true',
-          'X-TL-Environment': 'sandbox',
+          'X-TL-Environment': __DEV__ ? 'sandbox' : 'live',
         },
         body: new URLSearchParams(requestBody).toString(),
       });
@@ -134,7 +141,7 @@ export class TrueLayerService {
       console.log('📥 Raw TrueLayer response:', {
         status: response.status,
         statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
+        headers: Array.from(response.headers.entries()),
         body: responseText,
       });
 

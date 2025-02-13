@@ -174,15 +174,44 @@
 
 - `20240211141000_add_balance_metadata.sql`: Marked as redundant (superseded by later migrations)
 
-## Recent Changes (February 13, 2024)
+## Recent Changes (February 14, 2024)
 
-- Separated account metadata into dedicated bank_accounts table
-- Fixed balance storage issues by removing unused fields
-- Aligned database schema with production environment
-- Added comprehensive logging for debugging
-- Fixed constraint issues across bank_accounts and balances tables
-- Improved error handling in balance storage
-- Updated TrueLayer service to handle account and balance separation
+- TrueLayer Integration Updates
+
+  - Added environment-aware provider configuration
+    - Development: Uses mock provider for testing
+    - Production: Uses real UK bank providers
+  - Enhanced error handling and logging
+  - Improved token management and refresh mechanism
+  - Added comprehensive transaction categorization
+  - Implemented balance fetching and storage
+  - Added support for multiple bank connections
+  - Enhanced security with token encryption
+
+- Database Schema Updates
+
+  - Separated account metadata into dedicated bank_accounts table
+  - Added support for multiple active bank connections
+  - Improved balance storage with currency support
+  - Enhanced transaction categorization system
+  - Added indices for better query performance
+
+- UI/UX Improvements
+
+  - Added bank connection status indicators
+  - Improved balance display with currency formatting
+  - Enhanced transaction list with categorization
+  - Added pull-to-refresh functionality
+  - Implemented transaction search and filtering
+  - Added date range filters (7, 30, 90 days)
+  - Added category-based filtering
+
+- Security Enhancements
+  - Implemented token encryption/decryption
+  - Added secure token storage in Supabase
+  - Enhanced error handling for failed connections
+  - Added connection status tracking
+  - Improved disconnect functionality
 
 ## Completed Items
 
