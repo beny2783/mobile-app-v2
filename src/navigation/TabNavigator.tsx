@@ -3,6 +3,7 @@ import ConnectBankScreen from '../screens/ConnectBankScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
 import BalancesScreen from '../screens/BalancesScreen';
+import ChallengesScreen from '../screens/ChallengesScreen';
 import CallbackScreen from '../screens/CallbackScreen';
 import { colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -58,6 +59,15 @@ export function TabNavigator() {
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="list-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Challenges"
+        component={ChallengesScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="trophy-outline" size={size} color={color} />
           ),
         }}
       />

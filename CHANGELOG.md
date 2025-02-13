@@ -98,6 +98,10 @@
   - [x] Predefined categories (Bills, Transport, Shopping, etc.)
   - [x] Merchant pattern matching
   - [ ] Custom user categories
+  - [ ] Fix category fetching from merchant_categories table
+    - [ ] Debug RLS policies
+    - [ ] Verify query formatting
+    - [ ] Check authentication flow
 
 ## 🔍 Phase 4: Transaction Features
 
@@ -112,7 +116,98 @@
   - [x] Daily section headers with totals
   - [x] Clean transaction card design
 
-## ⚙️ Phase 5: Settings & Polish
+## 🎮 Phase 5: Gamification & Engagement
+
+- [x] Challenge System Implementation
+  - [x] Database schema for challenges and achievements
+  - [x] Challenge tracking service
+    - [x] Active challenge fetching
+    - [x] Challenge progress tracking
+    - [x] Progress calculation engine
+    - [x] Challenge completion handling
+  - [x] Challenge types implementation
+    - [x] No spend challenges
+    - [x] Reduced spending challenges
+    - [x] Spending reduction challenges
+    - [x] Savings challenges
+    - [x] Streak-based challenges
+    - [x] Category budget challenges
+    - [x] Smart shopping challenges
+  - [x] Reward distribution system
+- [x] Challenge UI Implementation
+  - [x] Active challenges list
+  - [x] Challenge details view
+  - [x] Available challenges modal
+  - [x] Start new challenge functionality
+  - [ ] Progress visualization
+  - [x] Reward display
+- [ ] Daily Challenges
+
+  - [ ] "No Spend Day" challenge
+    - [ ] Challenge UI
+    - [ ] Exclude essential expenses
+    - [ ] Track 24-hour periods
+    - [ ] Streak counting
+  - [ ] "Pack Lunch" savings challenge
+    - [ ] Challenge UI
+    - [ ] Track dining expenses
+    - [ ] Time-based verification
+    - [ ] Savings calculation
+  - [ ] "Weekend Warrior" challenge
+    - [ ] Challenge UI
+    - [ ] Weekend spending tracking
+    - [ ] Historical comparison
+    - [ ] Reduction targets
+
+- [ ] Achievement System
+
+  - [ ] Achievement UI
+  - [ ] "First £100 Saved" badge
+    - [ ] Badge design
+    - [ ] Savings calculation
+    - [ ] Progress tracking
+  - [ ] "30-day Streak" badge
+    - [ ] Badge design
+    - [ ] Daily streak tracking
+    - [ ] Budget compliance verification
+  - [ ] "Smart Shopper" badge
+    - [ ] Badge design
+    - [ ] Deals tracking
+    - [ ] Savings verification
+  - [ ] "Category Master" badge
+    - [ ] Badge design
+    - [ ] Category budget tracking
+    - [ ] Monthly compliance checking
+
+- [ ] Engagement Features
+
+  - [ ] XP System Implementation
+    - [ ] XP calculation
+    - [ ] Level progression rules
+    - [ ] XP rewards balancing
+  - [ ] User Profile Enhancements
+    - [ ] Level display
+    - [ ] Achievement showcase
+    - [ ] Challenge history
+  - [ ] Leaderboards
+    - [ ] Anonymous ranking system
+    - [ ] Weekly/Monthly resets
+    - [ ] Category-specific boards
+
+- [ ] Notification System
+  - [ ] System Architecture
+    - [ ] Push notification setup
+    - [ ] Notification preferences
+  - [ ] Challenge Notifications
+    - [ ] Challenge reminders
+    - [ ] Progress updates
+    - [ ] Completion alerts
+  - [ ] Achievement Notifications
+    - [ ] New badge alerts
+    - [ ] Streak maintenance
+    - [ ] Level up notifications
+
+## ⚙️ Phase 6: Settings & Polish
 
 - [ ] Settings screen
   - [ ] Account management

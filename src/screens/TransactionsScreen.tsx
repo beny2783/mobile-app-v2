@@ -17,6 +17,7 @@ import { colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabase';
 import { Transaction } from '../types';
+import { ChallengeTrackingService } from '../services/challengeTracking';
 
 interface TransactionSection {
   title: string;
@@ -36,6 +37,7 @@ export default function TransactionsScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
+  const challengeTracking = React.useMemo(() => new ChallengeTrackingService(), []);
 
   const trueLayer = new TrueLayerService({
     clientId: TRUELAYER.CLIENT_ID || '',
@@ -86,6 +88,14 @@ export default function TransactionsScreen() {
         setTransactions([]);
       } else {
         setTransactions(data);
+
+        // Update challenge progress with new transactions
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          await challengeTracking.updateChallengeProgress(user.id, data);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
@@ -98,19 +108,52 @@ export default function TransactionsScreen() {
   };
 
   const fetchCategories = async () => {
-    const { data, error } = await supabase
-      .from('merchant_categories')
-      .select('category')
-      .is('user_id', null); // Get system-wide categories
+    try {
+      console.log('🔍 Starting category fetch...');
 
-    if (error) {
-      console.error('Failed to fetch categories:', error);
-      return;
+      // First check if we're authenticated
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError) {
+        console.error('Auth error:', authError);
+        return;
+      }
+      console.log('👤 Authenticated as:', user?.id);
+
+      // Then fetch categories
+      const { data, error } = await supabase
+        .from('merchant_categories')
+        .select('*')
+        .or(`user_id.is.null,user_id.eq.${user?.id}`);
+
+      console.log('🔄 Query completed');
+      console.log('❌ Error:', error);
+      console.log('📦 Data:', data);
+      console.log('🔍 Query details:', {
+        sql: `SELECT * FROM merchant_categories WHERE user_id IS NULL OR user_id = '${user?.id}'`,
+        rowCount: data?.length || 0,
+      });
+
+      if (error) {
+        console.error('Failed to fetch categories:', error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        console.log('⚠️ No data returned from categories query');
+        return;
+      }
+
+      // Get unique categories
+      const uniqueCategories = Array.from(new Set(data.map((c) => c.category))).sort();
+      console.log('🏷️ Unique categories:', uniqueCategories);
+      console.log('📊 Total unique categories:', uniqueCategories.length);
+      setCategories(uniqueCategories);
+    } catch (err) {
+      console.error('💥 Error in fetchCategories:', err);
     }
-
-    // Get unique categories
-    const uniqueCategories = Array.from(new Set(data.map((c) => c.category))).sort();
-    setCategories(uniqueCategories);
   };
 
   // First get filtered transactions
@@ -151,10 +194,15 @@ export default function TransactionsScreen() {
     }));
   }, [filteredTransactions]); // Only depend on filteredTransactions
 
+  // Fetch transactions when date range changes
   useEffect(() => {
     fetchTransactions();
-    fetchCategories();
   }, [dateRange]);
+
+  // Fetch categories on mount
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -209,6 +257,13 @@ export default function TransactionsScreen() {
 
   const renderCategoryFilters = () => {
     console.log('🎨 Rendering categories:', categories);
+    console.log('🎯 Selected category:', selectedCategory);
+
+    if (categories.length === 0) {
+      console.log('⚠️ No categories available');
+      return null;
+    }
+
     return (
       <View style={{ backgroundColor: '#fff' }}>
         <ScrollView
