@@ -1,21 +1,16 @@
-export const linking = {
-  prefixes: ['spendingtracker://', 'http://localhost:19006'],
+import { LinkingOptions } from '@react-navigation/native';
+import { RootStackParamList } from '../App';
+
+export const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ['spendingtracker://', 'http://localhost:19006', 'http://127.0.0.1:54321'],
   config: {
     screens: {
-      AppTabs: {
-        screens: {
-          Callback: {
-            path: 'auth/callback',
-            parse: {
-              url: (url: string) => url,
-            },
-          },
-          ConnectBank: 'connect-bank',
-          Main: '',
-          Profile: 'profile',
-        },
-      },
       Auth: 'auth',
+      AuthCallback: 'auth/v1/authorize',
+      Main: 'main',
+      ConnectBank: 'connect-bank',
+      Callback: 'auth/callback',
+      AppTabs: 'app',
     },
   },
 };

@@ -50,35 +50,37 @@
   - [x] Improve disconnect_bank function
   - [x] Add helper functions for connection management
 
-- [ ] TrueLayer Service Updates
+- [x] TrueLayer Service Updates
 
-  - [ ] Remove auto-disconnection of other banks
-  - [ ] Update token storage logic
-  - [ ] Modify balance fetching for multiple connections
-  - [ ] Update transaction syncing for multiple banks
+  - [x] Remove auto-disconnection of other banks
+  - [x] Update token storage logic
+  - [x] Modify balance fetching for multiple connections
+  - [x] Update transaction syncing for multiple banks
+  - [x] Improve disconnection to only remove specific connection data
 
-- [ ] Connect Banks Screen Updates
+- [x] Connect Banks Screen Updates
 
-  - [ ] Show list of connected banks
-  - [ ] Add individual disconnect buttons
-  - [ ] Update connection status indicators
-  - [ ] Modify connect flow for multiple banks
-  - [ ] Add error handling for multiple connections
+  - [x] Show list of connected banks
+  - [x] Add individual disconnect buttons
+  - [x] Update connection status indicators
+  - [x] Modify connect flow for multiple banks
+  - [x] Add error handling for multiple connections
 
-- [ ] Balances Screen Updates
+- [x] Balances Screen Updates
 
-  - [ ] Group accounts by bank
-  - [ ] Show per-bank totals
-  - [ ] Update total balance calculation
-  - [ ] Improve empty state UI
-  - [ ] Add refresh mechanism for all connections
+  - [x] Group accounts by bank
+  - [x] Show per-bank totals
+  - [x] Update total balance calculation
+  - [x] Improve empty state UI
+  - [x] Add refresh mechanism for all connections
+  - [x] Handle multiple bank connections in TotalBalance component
 
-- [ ] Testing & Validation
-  - [ ] Test connecting multiple banks
-  - [ ] Verify balance aggregation
-  - [ ] Test disconnection flow
-  - [ ] Validate transaction syncing
-  - [ ] Check error handling
+- [x] Testing & Validation
+  - [x] Test connecting multiple banks
+  - [x] Verify balance aggregation
+  - [x] Test disconnection flow
+  - [x] Validate transaction syncing
+  - [x] Check error handling
 
 ## 💰 Phase 3: Transaction Management
 
@@ -270,6 +272,15 @@
 - `20240211141000_add_balance_metadata.sql`: Marked as redundant (superseded by later migrations)
 
 ## Recent Changes (February 14, 2024)
+
+- Multiple Bank Connections Support
+
+  - Updated TrueLayer service to properly handle multiple bank connections
+  - Enhanced disconnection process to only remove data for specific connection
+  - Modified TotalBalance component to aggregate balances from all active connections
+  - Verified BalancesScreen properly handles multiple bank connections
+  - Added proper error handling and logging for multi-bank scenarios
+  - Ensured non-destructive updates maintaining backward compatibility
 
 - TrueLayer Integration Updates
 

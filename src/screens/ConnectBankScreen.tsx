@@ -111,13 +111,13 @@ export default function ConnectBankScreen() {
 
   const checkBankConnection = async () => {
     try {
-      logDebugInfo('Checking bank connection status...');
+      logDebugInfo('🔄 Checking bank connection status...');
 
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
-      logDebugInfo(`User ID: ${user?.id}`);
+      logDebugInfo(`👤 User ID: ${user?.id}`);
 
       if (!user) {
         setError('Please log in first');
@@ -142,7 +142,7 @@ export default function ConnectBankScreen() {
         .order('created_at', { ascending: false });
 
       if (dbError) {
-        console.error('Failed to check bank connections:', dbError);
+        console.error('❌ Failed to check bank connections:', dbError);
         setError('Failed to check bank connections');
         setStatus('error');
         setLoading(false);
@@ -150,21 +150,47 @@ export default function ConnectBankScreen() {
       }
 
       if (activeConnections && activeConnections.length > 0) {
-        logDebugInfo(`Found ${activeConnections.length} active bank connections`);
+        console.log('🏦 Active Bank Connections:', {
+          count: activeConnections.length,
+          connections: activeConnections.map((conn) => ({
+            id: conn.id,
+            provider: conn.provider,
+            bank_name: conn.bank_name || 'Unknown Bank',
+            created_at: new Date(conn.created_at).toLocaleString(),
+            account_count: conn.bank_accounts?.[0]?.count || 0,
+            last_sync: conn.last_sync ? new Date(conn.last_sync).toLocaleString() : 'Never',
+          })),
+        });
+
         // Transform the data to match the expected format
-        const transformedConnections = activeConnections.map((conn) => ({
-          ...conn,
-          last_sync_status: !conn.last_sync
-            ? 'pending'
-            : new Date(conn.last_sync) < new Date(Date.now() - 24 * 60 * 60 * 1000)
-              ? 'needs_update'
-              : 'success',
-          account_count: conn.bank_accounts?.[0]?.count || 0,
-        }));
+        const transformedConnections = activeConnections.map((conn) => {
+          const connection = {
+            ...conn,
+            last_sync_status: !conn.last_sync
+              ? 'pending'
+              : new Date(conn.last_sync) < new Date(Date.now() - 24 * 60 * 60 * 1000)
+                ? 'needs_update'
+                : 'success',
+            account_count: conn.bank_accounts?.[0]?.count || 0,
+          };
+
+          console.log(`📊 Connection Details [${conn.id}]:`, {
+            bank_name: connection.bank_name || 'Unknown Bank',
+            status: connection.last_sync_status,
+            accounts: connection.account_count,
+            last_sync: connection.last_sync
+              ? new Date(connection.last_sync).toLocaleString()
+              : 'Never',
+            has_token: !!connection.encrypted_access_token,
+          });
+
+          return connection;
+        });
+
         setConnections(transformedConnections);
         setStatus('connected');
       } else {
-        logDebugInfo('No active bank connections found');
+        console.log('ℹ️ No active bank connections found');
         setStatus('disconnected');
         setConnections([]);
       }
@@ -183,10 +209,33 @@ export default function ConnectBankScreen() {
       setLoading(true);
       setError(null);
       setStatus('connecting');
-      logDebugInfo('Starting bank connection process');
+      logDebugInfo('🏦 Starting new bank connection process');
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      logDebugInfo(`👤 User authenticated: ${user?.id}`);
+
+      // Check existing connections first
+      const { data: existingConnections } = await supabase
+        .from('bank_connections')
+        .select('*')
+        .eq('user_id', user?.id)
+        .eq('status', 'active')
+        .is('disconnected_at', null);
+
+      console.log('🔍 Current Active Connections:', {
+        count: existingConnections?.length || 0,
+        connections: existingConnections?.map((conn) => ({
+          id: conn.id,
+          provider: conn.provider,
+          bank_name: conn.bank_name || 'Unknown Bank',
+          created_at: new Date(conn.created_at).toLocaleString(),
+        })),
+      });
 
       const authUrl = trueLayer.getAuthUrl();
-      logDebugInfo(`Generated Auth URL: ${authUrl}`);
+      logDebugInfo(`🔗 Generated Auth URL: ${authUrl}`);
 
       await WebBrowser.warmUpAsync();
 
@@ -199,28 +248,28 @@ export default function ConnectBankScreen() {
         }
       );
 
-      logDebugInfo(`WebBrowser result: ${JSON.stringify(result)}`);
+      logDebugInfo(`📱 WebBrowser result: ${JSON.stringify(result)}`);
 
       if (result.type === 'success' && result.url) {
         const url = new URL(result.url);
         const code = url.searchParams.get('code');
 
         if (code) {
-          logDebugInfo(`Got code: ${code.substring(0, 10)}...`);
+          logDebugInfo(`✅ Got authorization code: ${code.substring(0, 10)}...`);
           try {
             await trueLayer.exchangeCode(code);
-            logDebugInfo('Code exchange successful');
+            logDebugInfo('🔄 Code exchange successful');
 
             // Fetch initial transactions and balances
-            logDebugInfo('Fetching initial data...');
+            logDebugInfo('📥 Fetching initial data...');
             await Promise.all([trueLayer.fetchTransactions(), fetchAndStoreBalances()]);
-            logDebugInfo('Initial data fetched successfully');
+            logDebugInfo('✅ Initial data fetched successfully');
 
             await checkBankConnection();
             setStatus('connected');
             navigation.navigate('Transactions');
           } catch (exchangeError) {
-            console.error('Code exchange failed:', exchangeError);
+            console.error('❌ Code exchange failed:', exchangeError);
             setError('Failed to complete bank connection');
             setStatus('error');
           }
@@ -233,7 +282,7 @@ export default function ConnectBankScreen() {
       await WebBrowser.coolDownAsync();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logDebugInfo(`Error: ${errorMessage}`);
+      logDebugInfo(`❌ Error: ${errorMessage}`);
       console.error('Error connecting bank:', error);
       setError(`Failed to connect to bank: ${errorMessage}`);
       setStatus('error');
@@ -271,39 +320,56 @@ export default function ConnectBankScreen() {
       logDebugInfo(`Accounts: ${JSON.stringify(accounts.results, null, 2)}`);
       logDebugInfo(`Balances: ${JSON.stringify(balances, null, 2)}`);
 
-      // Store balances in Supabase
-      const balanceRecords = accounts.results.map((account: any, index: number) => {
-        const record = {
-          user_id: user.id,
-          connection_id: connection.id,
-          account_id: account.account_id,
-          current: balances[index].current,
-          available: balances[index].available,
-          currency: balances[index].currency,
-        };
+      // First, create or update bank accounts
+      for (let i = 0; i < accounts.results.length; i++) {
+        const account = accounts.results[i];
+        const balance = balances[i];
 
-        logDebugInfo(`Preparing balance record for account ${account.account_id}:`);
-        logDebugInfo(JSON.stringify(record, null, 2));
+        // Create or update bank account
+        const { error: accountError } = await supabase.from('bank_accounts').upsert(
+          {
+            user_id: user.id,
+            connection_id: connection.id,
+            account_id: account.account_id,
+            account_type: account.account_type,
+            account_name: account.display_name || account.account_type,
+            currency: balance.currency,
+            balance: balance.current,
+            last_updated: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id,connection_id,account_id',
+          }
+        );
 
-        return record;
-      });
-
-      logDebugInfo(`Upserting ${balanceRecords.length} balance records...`);
-
-      const { error: insertError } = await supabase.from('balances').upsert(balanceRecords, {
-        onConflict: 'user_id,connection_id,account_id',
-      });
-
-      if (insertError) {
-        logDebugInfo(`Error storing balances: ${insertError.message}`);
-        throw insertError;
+        if (accountError) {
+          logDebugInfo(`Error creating bank account: ${accountError.message}`);
+          throw accountError;
+        }
       }
 
-      logDebugInfo('Balances stored successfully');
+      // Now create the balance records
+      const balanceRecords = accounts.results.map((account: any, index: number) => ({
+        user_id: user.id,
+        connection_id: connection.id,
+        account_id: account.account_id,
+        current: balances[index].current,
+        available: balances[index].available,
+        currency: balances[index].currency,
+      }));
+
+      logDebugInfo(`Inserting ${balanceRecords.length} balance records...`);
+      const { error: balanceError } = await supabase.from('balances').insert(balanceRecords);
+
+      if (balanceError) {
+        logDebugInfo(`Error inserting balances: ${balanceError.message}`);
+        throw balanceError;
+      }
+
+      logDebugInfo('Successfully stored balances');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logDebugInfo(`Error in fetchAndStoreBalances: ${errorMessage}`);
-      console.error('Failed to fetch and store balances:', error);
       throw error;
     }
   };
@@ -312,16 +378,18 @@ export default function ConnectBankScreen() {
     try {
       setLoading(true);
       setError(null);
-      logDebugInfo('Starting bank disconnection process');
+      console.log('🔄 Starting bank disconnection process for connection:', connectionId);
 
       await trueLayer.disconnectBank(connectionId);
-      logDebugInfo('Bank disconnected and transactions cleared successfully');
+      console.log('✅ Bank disconnected and transactions cleared successfully');
 
       await checkBankConnection();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logDebugInfo(`Error: ${errorMessage}`);
-      console.error('Error disconnecting bank:', error);
+      console.error('❌ Error disconnecting bank:', {
+        connectionId,
+        error: errorMessage,
+      });
       setError(`Failed to disconnect bank: ${errorMessage}`);
     } finally {
       setLoading(false);
@@ -351,7 +419,7 @@ export default function ConnectBankScreen() {
       {/* Connected Banks Section */}
       {connections.length > 0 && (
         <View style={styles.connectionsContainer}>
-          <Text style={styles.sectionTitle}>Connected Banks</Text>
+          <Text style={styles.sectionTitle}>Connected Banks ({connections.length})</Text>
           {connections.map((connection) => (
             <View key={connection.id} style={styles.connectionCard}>
               <View style={styles.connectionHeader}>
@@ -368,7 +436,7 @@ export default function ConnectBankScreen() {
                     />
                     <Text style={styles.bankName}>
                       {connection.bank_name ||
-                        `${connection.provider.charAt(0).toUpperCase()}${connection.provider.slice(1)} Bank`}
+                        `${connection.provider.charAt(0).toUpperCase()}${connection.provider.slice(1)} Bank ${connections.length > 1 ? connection.id.slice(-4) : ''}`}
                     </Text>
                   </View>
                   <Text style={styles.connectionStatus}>

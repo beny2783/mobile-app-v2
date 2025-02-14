@@ -19,6 +19,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
 
+  // Debug logging
+  useEffect(() => {
+    console.log('AuthProvider state:', { loading, user });
+  }, [loading, user]);
+
   useEffect(() => {
     // Use Supabase's onAuthStateChange instead of window listeners
     const {
@@ -59,16 +64,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     try {
       console.log('Starting Google sign in flow...');
-      await WebBrowser.warmUpAsync();
 
-      const redirectUrl = Platform.select({
-        ios: 'spendingtracker://auth/callback',
-        android: 'spendingtracker://auth/callback',
-        default: 'http://localhost:19006/auth/callback',
-      });
+      // Make sure WebBrowser is ready
+      try {
+        await WebBrowser.warmUpAsync();
+      } catch (error) {
+        console.error('Failed to warm up WebBrowser:', error);
+      }
+
+      // Set up the redirect URL based on environment
+      const redirectUrl = __DEV__
+        ? 'http://127.0.0.1:54321/auth/v1/callback'
+        : 'https://cquppesxfqkkrppakopn.supabase.co/auth/v1/callback';
 
       console.log('Using redirect URL:', redirectUrl);
 
+      // Start the OAuth flow
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -81,49 +92,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      if (error) throw error;
-      console.log('Sign in response:', data);
+      if (error) {
+        console.error('OAuth initialization error:', error);
+        throw error;
+      }
 
-      if (Platform.OS !== 'web' && data?.url) {
-        try {
-          const authUrl = data.url;
-          console.log('Opening auth URL:', authUrl);
+      if (!data?.url) {
+        console.error('No OAuth URL received');
+        throw new Error('Failed to get authentication URL');
+      }
 
-          const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl, {
-            showInRecents: true,
-            preferEphemeralSession: true,
+      console.log('Received OAuth URL:', data.url);
+
+      // Open the authentication URL in the browser
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl, {
+        showInRecents: true,
+        preferEphemeralSession: true,
+      });
+
+      console.log('Auth session result:', result);
+
+      if (result.type === 'success' && result.url) {
+        // Parse the URL and extract tokens
+        const url = new URL(result.url);
+        let params: URLSearchParams;
+
+        // Check both hash and search parameters
+        if (url.hash) {
+          params = new URLSearchParams(url.hash.substring(1));
+        } else {
+          params = url.searchParams;
+        }
+
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+
+        console.log('Tokens extracted:', {
+          hasAccessToken: !!access_token,
+          hasRefreshToken: !!refresh_token,
+        });
+
+        if (access_token) {
+          const {
+            data: { session },
+            error: sessionError,
+          } = await supabase.auth.setSession({
+            access_token,
+            refresh_token: refresh_token || '',
           });
 
-          if (result.type === 'success') {
-            // Parse the URL to get the access token
-            const url = new URL(result.url);
-            const params = new URLSearchParams(url.hash.substring(1));
-            const access_token = params.get('access_token');
-
-            if (access_token) {
-              // Set the session with the token
-              const {
-                data: { session },
-                error: sessionError,
-              } = await supabase.auth.setSession({
-                access_token,
-                refresh_token: params.get('refresh_token') || '',
-              });
-
-              if (sessionError) throw sessionError;
-              console.log('Session established:', !!session);
-            }
+          if (sessionError) {
+            console.error('Session error:', sessionError);
+            throw sessionError;
           }
 
-          await WebBrowser.coolDownAsync();
-        } catch (error) {
-          console.error('WebBrowser error:', error);
-          throw error;
+          console.log('Session established:', !!session);
+          return;
+        } else {
+          console.error('No access token found in response');
+          throw new Error('No access token received');
         }
+      } else if (result.type === 'cancel') {
+        console.log('Auth session cancelled by user');
+        throw new Error('Authentication cancelled');
       }
     } catch (error) {
       console.error('Error signing in with Google:', error);
       throw error;
+    } finally {
+      try {
+        await WebBrowser.coolDownAsync();
+      } catch (error) {
+        console.error('Failed to cool down WebBrowser:', error);
+      }
     }
   };
 
@@ -141,7 +182,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{ session: null, user, loading, signIn, signOut, signInWithGoogle }}
     >
-      {console.log('AuthProvider rendering', { loading, user })}
       {children}
     </AuthContext.Provider>
   );

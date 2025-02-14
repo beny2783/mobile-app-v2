@@ -25,6 +25,29 @@ interface BankConnection {
   provider: string;
   status: string;
   created_at: string;
+  bank_name?: string;
+  updated_at: string;
+}
+
+interface Balance {
+  id: string;
+  user_id: string;
+  connection_id: string;
+  account_id: string;
+  currency: string;
+  current: number;
+  available: number;
+  updated_at: string;
+  created_at: string;
+}
+
+interface BankAccountWithBalances extends BankAccount {
+  balances?: Balance[];
+}
+
+interface BankConnectionWithAccounts extends BankConnection {
+  bank_accounts?: BankAccountWithBalances[];
+  balances?: Balance[];
 }
 
 interface GroupedAccounts {
@@ -45,7 +68,9 @@ export default function BalancesScreen() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // First, get active bank connections
+      console.log('Fetching data for user:', user.id);
+
+      // Get active bank connections
       const { data: connections, error: connectionError } = await supabase
         .from('bank_connections')
         .select('*')
@@ -58,48 +83,91 @@ export default function BalancesScreen() {
         throw connectionError;
       }
 
-      // For each connection, fetch accounts and balances
-      const accountsPromises = connections.map(async (connection) => {
-        const { data: accounts, error: accountsError } = await supabase
-          .from('bank_accounts')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('connection_id', connection.id);
+      if (!connections || connections.length === 0) {
+        console.log('No active connections found');
+        setGroupedAccounts([]);
+        return;
+      }
 
-        if (accountsError) {
-          console.error('Error fetching accounts:', accountsError);
-          throw accountsError;
-        }
+      console.log('Found connections:', connections);
 
-        const { data: balances, error: balancesError } = await supabase
-          .from('balances')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('connection_id', connection.id);
+      // For each connection, get accounts and balances
+      const groupedResults = await Promise.all(
+        connections.map(async (connection) => {
+          // Get accounts for this connection
+          const { data: accounts, error: accountsError } = await supabase
+            .from('bank_accounts')
+            .select('*')
+            .eq('connection_id', connection.id)
+            .eq('user_id', user.id);
 
-        if (balancesError) {
-          console.error('Error fetching balances:', balancesError);
-          throw balancesError;
-        }
+          if (accountsError) {
+            console.error('Error fetching accounts:', accountsError);
+            return null;
+          }
 
-        // Combine accounts with their balances
-        const accountsWithBalances = accounts.map((account) => {
-          const balance = balances?.find((b) => b.account_id === account.account_id);
-          return {
-            ...account,
-            current: balance?.current || 0,
-            available: balance?.available || 0,
+          // Get balances for this connection
+          const { data: balances, error: balancesError } = await supabase
+            .from('balances')
+            .select('*')
+            .eq('connection_id', connection.id)
+            .eq('user_id', user.id);
+
+          if (balancesError) {
+            console.error('Error fetching balances:', balancesError);
+            return null;
+          }
+
+          console.log(
+            `Found ${accounts?.length || 0} accounts and ${balances?.length || 0} balances for connection ${connection.id}`
+          );
+
+          // If we have accounts, use them and attach balances
+          const processedAccounts: BankAccount[] = accounts?.length
+            ? accounts.map((account) => ({
+                ...account,
+                current: balances?.find((b) => b.account_id === account.account_id)?.current || 0,
+                available:
+                  balances?.find((b) => b.account_id === account.account_id)?.available || 0,
+              }))
+            : (balances || []).map((balance) => ({
+                id: balance.id,
+                user_id: balance.user_id,
+                connection_id: balance.connection_id,
+                account_id: balance.account_id,
+                account_type: 'Unknown',
+                account_name: `Account ${balance.account_id.slice(-4)}`,
+                currency: balance.currency,
+                current: balance.current || 0,
+                available: balance.available || 0,
+                last_updated: balance.updated_at,
+                created_at: balance.created_at,
+                updated_at: balance.updated_at,
+              }));
+
+          const result: GroupedAccounts = {
+            connection: {
+              id: connection.id,
+              provider: connection.provider,
+              status: connection.status,
+              created_at: connection.created_at,
+              updated_at: connection.updated_at,
+              bank_name: connection.bank_name || 'My Bank',
+            },
+            accounts: processedAccounts,
           };
-        });
 
-        return {
-          connection,
-          accounts: accountsWithBalances,
-        };
-      });
+          return result;
+        })
+      );
 
-      const groupedResults = await Promise.all(accountsPromises);
-      setGroupedAccounts(groupedResults);
+      // Filter out any null results from failed queries
+      const validResults = groupedResults.filter(
+        (result): result is GroupedAccounts => result !== null
+      );
+      console.log('Final processed results:', validResults);
+
+      setGroupedAccounts(validResults);
       setError(null);
     } catch (err) {
       console.error('Error fetching accounts:', err);

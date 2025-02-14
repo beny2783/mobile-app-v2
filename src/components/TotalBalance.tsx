@@ -15,6 +15,7 @@ interface Balance {
   created_at: string;
   updated_at: string;
   account_name?: string;
+  bank_name?: string;
 }
 
 export default function TotalBalance() {
@@ -30,23 +31,32 @@ export default function TotalBalance() {
         } = await supabase.auth.getUser();
         if (!user) return;
 
-        // First get active connection
-        const { data: connection, error: connectionError } = await supabase
+        // Get all active connections
+        const { data: connections, error: connectionError } = await supabase
           .from('bank_connections')
           .select('*')
           .eq('user_id', user.id)
           .eq('status', 'active')
-          .is('disconnected_at', null)
-          .single();
+          .is('disconnected_at', null);
 
         if (connectionError) {
-          console.error('Error fetching bank connection:', connectionError);
+          console.error('Error fetching bank connections:', connectionError);
           throw connectionError;
         }
 
-        // Then fetch balances and accounts
-        const [{ data: balances, error: balancesError }, { data: accounts, error: accountsError }] =
-          await Promise.all([
+        if (!connections || connections.length === 0) {
+          setBalances([]);
+          return;
+        }
+
+        // Fetch balances and accounts for all connections
+        const allBalances: Balance[] = [];
+
+        for (const connection of connections) {
+          const [
+            { data: connectionBalances, error: balancesError },
+            { data: accounts, error: accountsError },
+          ] = await Promise.all([
             supabase
               .from('balances')
               .select('*')
@@ -59,19 +69,23 @@ export default function TotalBalance() {
               .eq('connection_id', connection.id),
           ]);
 
-        if (balancesError) throw balancesError;
-        if (accountsError) throw accountsError;
+          if (balancesError) throw balancesError;
+          if (accountsError) throw accountsError;
 
-        // Combine balances with account names
-        const combinedBalances = (balances || []).map((balance) => {
-          const account = accounts?.find((a) => a.account_id === balance.account_id);
-          return {
-            ...balance,
-            account_name: account?.account_name || 'Unknown Account',
-          };
-        });
+          // Combine balances with account names for this connection
+          const combinedBalances = (connectionBalances || []).map((balance) => {
+            const account = accounts?.find((a) => a.account_id === balance.account_id);
+            return {
+              ...balance,
+              account_name: account?.account_name || 'Unknown Account',
+              bank_name: connection.bank_name || 'Connected Bank',
+            };
+          });
 
-        setBalances(combinedBalances);
+          allBalances.push(...combinedBalances);
+        }
+
+        setBalances(allBalances);
         setError(null);
       } catch (err) {
         console.error('Failed to fetch balance data:', err);

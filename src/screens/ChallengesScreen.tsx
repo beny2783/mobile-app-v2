@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl, Modal as RNModal } from 'react-native';
-import { Text, Card, ActivityIndicator, Button, IconButton } from 'react-native-paper';
+import { Text, Card, ActivityIndicator, Button, IconButton, ProgressBar } from 'react-native-paper';
 import { colors } from '../constants/theme';
 import { ChallengeTrackingService } from '../services/challengeTracking';
 import type { Challenge, UserChallenge } from '../types';
@@ -9,6 +9,120 @@ import { supabase } from '../services/supabase';
 interface UserChallengeWithDetails extends UserChallenge {
   challenge: Challenge;
 }
+
+const ProgressIndicator = ({ userChallenge }: { userChallenge: UserChallengeWithDetails }) => {
+  const { challenge, progress } = userChallenge;
+  const { criteria } = challenge;
+
+  const getProgressPercentage = (): number => {
+    switch (criteria.type) {
+      case 'no_spend':
+        // For no_spend, we show how much of their max_spend is remaining
+        const spent = progress.total_spent || 0;
+        const maxSpend = criteria.max_spend || 1; // Prevent division by zero
+        return Math.max(0, Math.min(1, 1 - spent / maxSpend));
+
+      case 'reduced_spending':
+        // For reduced spending, show progress towards spending limit
+        const categorySpent = progress.category_spent || 0;
+        const spendingLimit = criteria.max_spend || 1; // Prevent division by zero
+        return Math.max(0, Math.min(1, 1 - categorySpent / spendingLimit));
+
+      case 'spending_reduction': {
+        // For spending reduction, show progress towards reduction target
+        const reductionPercentage = progress.reduction_percentage || 0;
+        const targetReduction = Number(criteria.reduction_target || 0) * 100;
+        return Math.max(0, Math.min(1, reductionPercentage / (targetReduction || 1))); // Prevent division by zero
+      }
+
+      case 'savings':
+        // For savings challenges, show progress towards target
+        const saved = progress.total_saved || 0;
+        const target = criteria.target || 1; // Prevent division by zero
+        return Math.max(0, Math.min(1, saved / target));
+
+      case 'streak':
+        // For streak challenges, show progress towards target days
+        const currentStreak = Number(progress.streak_count || 0);
+        const targetDays = Number(criteria.days || 30);
+        return Math.max(0, Math.min(1, currentStreak / targetDays));
+
+      case 'category_budget':
+        // For category budget, show overall budget compliance
+        const categories = Object.keys(progress.category_spending || {});
+        if (categories.length === 0) return 0;
+        const compliantCategories = categories.filter(
+          (cat) =>
+            (progress.category_spending?.[cat] || 0) <= ((criteria as any).budgets?.[cat] || 0)
+        );
+        return compliantCategories.length / Math.max(1, categories.length); // Prevent division by zero
+
+      default:
+        return 0;
+    }
+  };
+
+  const getProgressText = (): string => {
+    const percentage = getProgressPercentage() * 100;
+    const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('en-GB', {
+        style: 'currency',
+        currency: 'GBP',
+      }).format(amount);
+    };
+
+    switch (criteria.type) {
+      case 'no_spend':
+        const spent = progress.total_spent || 0;
+        const maxSpend = criteria.max_spend || 0;
+        return `${formatCurrency(maxSpend - spent)} remaining`;
+
+      case 'reduced_spending':
+        const categorySpent = progress.category_spent || 0;
+        const spendingLimit = criteria.max_spend || 0;
+        return `${formatCurrency(spendingLimit - categorySpent)} remaining`;
+
+      case 'spending_reduction':
+        const reduction = progress.reduction_percentage || 0;
+        return `${reduction.toFixed(1)}% reduced`;
+
+      case 'savings':
+        const saved = progress.total_saved || 0;
+        const target = criteria.target || 0;
+        return `${formatCurrency(saved)} of ${formatCurrency(target)}`;
+
+      case 'streak':
+        const currentStreak = progress.streak_count || 0;
+        const targetDays = criteria.days || 30;
+        return `${currentStreak} of ${targetDays} days`;
+
+      case 'category_budget':
+        const categories = Object.keys(progress.category_spending || {}).length;
+        return `${categories} categories tracked`;
+
+      default:
+        return `${percentage.toFixed(0)}% complete`;
+    }
+  };
+
+  return (
+    <View style={styles.progressContainer}>
+      <View style={styles.progressHeader}>
+        <Text variant="bodySmall" style={styles.progressLabel}>
+          Progress
+        </Text>
+        <Text variant="bodySmall" style={styles.progressText}>
+          {getProgressText()}
+        </Text>
+      </View>
+      <ProgressBar
+        progress={getProgressPercentage()}
+        color={colors.primary}
+        style={styles.progressBar}
+      />
+    </View>
+  );
+};
 
 export default function ChallengesScreen() {
   const [loading, setLoading] = useState(true);
@@ -168,12 +282,7 @@ export default function ChallengesScreen() {
                 <Text variant="bodyMedium" style={styles.challengeDescription}>
                   {userChallenge.challenge.description}
                 </Text>
-                <View style={styles.progressContainer}>
-                  <Text variant="bodySmall" style={styles.progressLabel}>
-                    Progress
-                  </Text>
-                  {/* TODO: Add progress visualization */}
-                </View>
+                <ProgressIndicator userChallenge={userChallenge} />
                 <View style={styles.rewardContainer}>
                   <Text variant="bodySmall" style={styles.rewardLabel}>
                     Reward
@@ -240,11 +349,24 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   progressContainer: {
-    marginBottom: 16,
+    marginVertical: 16,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   progressLabel: {
     color: colors.text.secondary,
-    marginBottom: 8,
+  },
+  progressText: {
+    color: colors.text.primary,
+    fontWeight: '500',
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
   },
   rewardContainer: {
     flexDirection: 'row',

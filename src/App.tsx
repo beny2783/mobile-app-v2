@@ -5,14 +5,25 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Provider as PaperProvider, MD3LightTheme, Portal } from 'react-native-paper';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthScreen from './screens/AuthScreen';
+import AuthCallbackScreen from './screens/AuthCallbackScreen';
 import { TabNavigator } from './navigation/TabNavigator';
 import CallbackScreen from './screens/CallbackScreen';
 import ConnectBankScreen from './screens/ConnectBankScreen';
 import { StatusBar } from 'react-native';
 import { colors } from './constants/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { linking } from './navigation/linking';
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Auth: { error?: string };
+  AuthCallback: { type: string; url?: string };
+  Main: undefined;
+  ConnectBank: undefined;
+  Callback: undefined;
+  AppTabs: undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 // Define custom theme
 const theme = {
@@ -33,7 +44,10 @@ function Navigation() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!user ? (
-        <Stack.Screen name="Auth" component={AuthScreen} />
+        <>
+          <Stack.Screen name="Auth" component={AuthScreen} />
+          <Stack.Screen name="AuthCallback" component={AuthCallbackScreen} />
+        </>
       ) : (
         <>
           <Stack.Screen name="Main" component={TabNavigator} />
@@ -52,7 +66,7 @@ export default function App() {
         <SafeAreaProvider>
           <AuthProvider>
             <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-            <NavigationContainer>
+            <NavigationContainer linking={linking}>
               <View style={{ flex: 1 }}>
                 <Navigation />
               </View>
