@@ -6,6 +6,7 @@ import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { RootStackParamList } from './src/navigation/types';
 import AuthScreen from './src/screens/AuthScreen';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { ServiceProvider } from './src/contexts/ServiceContext';
 import { TabNavigator } from './src/navigation/TabNavigator';
 import { setupErrorHandling } from './src/utils/errorHandling';
 import { linking } from './src/navigation/linking';
@@ -41,19 +42,21 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <NavigationContainer
-        linking={linking}
-        fallback={
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#87CEEB" />
+      <ServiceProvider>
+        <NavigationContainer
+          linking={linking}
+          fallback={
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#87CEEB" />
+            </View>
+          }
+        >
+          <View style={styles.container}>
+            <StatusBar style="auto" />
+            <Navigation />
           </View>
-        }
-      >
-        <View style={styles.container}>
-          <StatusBar style="auto" />
-          <Navigation />
-        </View>
-      </NavigationContainer>
+        </NavigationContainer>
+      </ServiceProvider>
     </AuthProvider>
   );
 }

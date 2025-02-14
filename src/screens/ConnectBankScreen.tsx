@@ -5,228 +5,106 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
-import { getTrueLayerService } from '../services/trueLayer';
-import { TRUELAYER } from '../constants';
+import { useServices } from '../contexts/ServiceContext';
+import { useBankConnections } from '../hooks/useBankConnections';
 import * as WebBrowser from 'expo-web-browser';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { AppTabParamList } from '../types/navigation';
-import { supabase } from '../services/supabase';
-import { Button } from 'react-native-paper';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-
-interface BankConnection {
-  id: string;
-  provider: string;
-  status: string;
-  created_at: string;
-  bank_name?: string;
-  logo_url?: string;
-  last_sync_status?: string;
-  account_count?: number;
-  last_sync?: string;
-  bank_accounts?: { count: number }[];
-}
-
-// Create TrueLayer service instance outside component
-const trueLayer = getTrueLayerService();
 
 type ConnectBankScreenNavigationProp = NativeStackNavigationProp<AppTabParamList, 'ConnectBank'>;
 type ConnectBankScreenRouteProp = RouteProp<AppTabParamList, 'ConnectBank'>;
 
 export default function ConnectBankScreen() {
+  console.log('🏦 Rendering ConnectBankScreen');
+
   const navigation = useNavigation<ConnectBankScreenNavigationProp>();
   const route = useRoute<ConnectBankScreenRouteProp>();
+  const { trueLayerService } = useServices();
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
-  const [connections, setConnections] = useState<BankConnection[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // Keep logging functionality but remove UI display
-  const logDebugInfo = (info: string) => {
-    if (__DEV__) {
-      console.log(`Debug: ${info}`);
-    }
-  };
+  const {
+    connections,
+    loading,
+    error: connectionError,
+    refresh: refreshConnections,
+    refreshing,
+    disconnectBank,
+  } = useBankConnections();
+
+  // Log when connections change
+  useEffect(() => {
+    console.log('🔄 Bank connections updated:', {
+      count: connections.length,
+      status,
+      error: connectionError,
+      loading,
+      refreshing,
+    });
+  }, [connections, status, connectionError, loading, refreshing]);
 
   useEffect(() => {
-    // Log environment info on mount
-    logDebugInfo(`Environment: ${__DEV__ ? 'Development' : 'Production'}`);
-    logDebugInfo(
-      `TrueLayer Config: ${JSON.stringify(
-        {
-          clientId: TRUELAYER.CLIENT_ID ? 'provided' : 'missing',
-          redirectUri: TRUELAYER.REDIRECT_URI,
-        },
-        null,
-        2
-      )}`
-    );
-  }, []);
-
-  useEffect(() => {
+    console.log('📝 Route params changed:', route.params);
     const init = async () => {
       try {
-        setLoading(true);
-        setError(null);
-
         // Check for success/error from callback first
         if (route.params?.success) {
+          console.log('✅ Bank connection successful');
           setStatus('connected');
-          await checkBankConnection();
-          setLoading(false);
+          await refreshConnections();
           return;
         }
 
         if (route.params?.error) {
+          console.log('❌ Bank connection error:', route.params.error);
           setError(route.params.error);
           setStatus('error');
-          setLoading(false);
           return;
         }
-
-        // Then check current connection status
-        await checkBankConnection();
       } catch (error) {
-        console.error('Failed to initialize:', error);
+        console.error('❌ Failed to initialize:', error);
         setError('Failed to check bank connection');
         setStatus('error');
-      } finally {
-        setLoading(false);
       }
     };
 
     init();
-  }, [route.params]);
-
-  const checkBankConnection = async () => {
-    try {
-      logDebugInfo('🔄 Checking bank connection status...');
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      logDebugInfo(`👤 User ID: ${user?.id}`);
-
-      if (!user) {
-        setError('Please log in first');
-        setStatus('error');
-        setLoading(false);
-        return;
-      }
-
-      // Query active connections directly
-      const { data: activeConnections, error: dbError } = await supabase
-        .from('bank_connections')
-        .select(
-          `
-          *,
-          bank_accounts:bank_accounts(count)
-        `
-        )
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .is('disconnected_at', null)
-        .not('encrypted_access_token', 'is', null)
-        .order('created_at', { ascending: false });
-
-      if (dbError) {
-        console.error('❌ Failed to check bank connections:', dbError);
-        setError('Failed to check bank connections');
-        setStatus('error');
-        setLoading(false);
-        return;
-      }
-
-      if (activeConnections && activeConnections.length > 0) {
-        console.log('🏦 Active Bank Connections:', {
-          count: activeConnections.length,
-          connections: activeConnections.map((conn) => ({
-            id: conn.id,
-            provider: conn.provider,
-            bank_name: conn.bank_name || 'Unknown Bank',
-            created_at: new Date(conn.created_at).toLocaleString(),
-            account_count: conn.bank_accounts?.[0]?.count || 0,
-            last_sync: conn.last_sync ? new Date(conn.last_sync).toLocaleString() : 'Never',
-          })),
-        });
-
-        // Transform the data to match the expected format
-        const transformedConnections = activeConnections.map((conn) => {
-          const connection = {
-            ...conn,
-            last_sync_status: !conn.last_sync
-              ? 'pending'
-              : new Date(conn.last_sync) < new Date(Date.now() - 24 * 60 * 60 * 1000)
-                ? 'needs_update'
-                : 'success',
-            account_count: conn.bank_accounts?.[0]?.count || 0,
-          };
-
-          console.log(`📊 Connection Details [${conn.id}]:`, {
-            bank_name: connection.bank_name || 'Unknown Bank',
-            status: connection.last_sync_status,
-            accounts: connection.account_count,
-            last_sync: connection.last_sync
-              ? new Date(connection.last_sync).toLocaleString()
-              : 'Never',
-            has_token: !!connection.encrypted_access_token,
-          });
-
-          return connection;
-        });
-
-        setConnections(transformedConnections);
-        setStatus('connected');
-      } else {
-        console.log('ℹ️ No active bank connections found');
-        setStatus('disconnected');
-        setConnections([]);
-      }
-
-      setLoading(false);
-    } catch (error) {
-      console.error('Failed to check bank connections:', error);
-      setError('Failed to check bank connections');
-      setStatus('error');
-      setLoading(false);
-    }
-  };
+  }, [route.params, refreshConnections]);
 
   const handleBankConnection = async () => {
-    setLoading(true);
+    console.log('🔄 Starting bank connection process...');
     setError(null);
     setStatus('connecting');
 
     try {
-      logDebugInfo('🔄 Starting bank connection...');
-      const authUrl = trueLayer.getAuthUrl();
-      logDebugInfo(`🔗 Auth URL generated: ${authUrl}`);
+      const authUrl = trueLayerService.getAuthUrl();
+      console.log('🔗 Generated auth URL');
 
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, TRUELAYER.REDIRECT_URI);
-      logDebugInfo(`📱 Browser session result: ${result.type}`);
+      const result = await WebBrowser.openAuthSessionAsync(
+        authUrl,
+        'spendingtracker://auth/callback'
+      );
+      console.log('📱 Browser session result:', result.type);
 
       if (result.type === 'success') {
         const url = result.url;
         const code = new URL(url).searchParams.get('code');
 
         if (code) {
-          logDebugInfo('🔑 Auth code received, exchanging...');
+          console.log('🔑 Received auth code, exchanging...');
           try {
-            await trueLayer.exchangeCode(code);
-            logDebugInfo('🔄 Code exchange successful');
-
-            // The new implementation handles fetching initial data during exchangeCode
-            await checkBankConnection();
+            await trueLayerService.exchangeCode(code);
+            console.log('✅ Code exchange successful');
             setStatus('connected');
+            await refreshConnections();
             navigation.navigate('Transactions');
           } catch (exchangeError) {
             console.error('❌ Code exchange failed:', exchangeError);
@@ -235,6 +113,7 @@ export default function ConnectBankScreen() {
           }
         }
       } else {
+        console.log('❌ Bank connection cancelled or failed');
         setError('Bank connection cancelled or failed');
         setStatus('error');
       }
@@ -242,34 +121,22 @@ export default function ConnectBankScreen() {
       await WebBrowser.coolDownAsync();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logDebugInfo(`❌ Error: ${errorMessage}`);
-      console.error('Error connecting bank:', error);
+      console.error('❌ Error connecting bank:', error);
       setError(`Failed to connect to bank: ${errorMessage}`);
       setStatus('error');
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleDisconnectBank = async (connectionId: string) => {
+    console.log('🔄 Disconnecting bank:', connectionId);
     try {
-      setLoading(true);
       setError(null);
-      console.log('🔄 Starting bank disconnection process for connection:', connectionId);
-
-      await trueLayer.disconnectBank(connectionId);
-      console.log('✅ Bank disconnected and transactions cleared successfully');
-
-      await checkBankConnection();
+      await disconnectBank(connectionId);
+      console.log('✅ Bank disconnected successfully');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Error disconnecting bank:', {
-        connectionId,
-        error: errorMessage,
-      });
+      console.error('❌ Error disconnecting bank:', error);
       setError(`Failed to disconnect bank: ${errorMessage}`);
-    } finally {
-      setLoading(false);
     }
   };
 
