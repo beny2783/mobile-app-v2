@@ -275,6 +275,100 @@
 
 - `20240211141000_add_balance_metadata.sql`: Marked as redundant (superseded by later migrations)
 
+## Implementation Plan: Multiple Bank Connections (February 15, 2024)
+
+### Phase 1: Token Management & Service Layer
+
+- [ ] Update Token Management
+
+  - [ ] Modify `getStoredToken` to accept connectionId parameter
+  - [ ] Update token refresh mechanism for multiple connections
+  - [ ] Add connection-specific token validation
+  - [ ] Implement token rotation for multiple active connections
+  - [ ] Add token status tracking per connection
+
+- [ ] Enhance TrueLayer Service
+  - [ ] Update `fetchTransactions` to work with specific connections
+  - [ ] Implement parallel transaction fetching across connections
+  - [ ] Add connection-specific error handling
+  - [ ] Create connection health monitoring
+  - [ ] Implement smart retry mechanisms per connection
+
+### Phase 2: Data Management & Storage
+
+- [ ] Update Storage Layer
+
+  - [ ] Modify transaction storage for better connection isolation
+  - [ ] Implement efficient balance updates across connections
+  - [ ] Add connection metadata caching
+  - [ ] Create connection status tracking table
+  - [ ] Add connection-specific settings storage
+
+- [ ] Transaction Management
+  - [ ] Update transaction aggregation across connections
+  - [ ] Implement connection-aware categorization
+  - [ ] Add connection-specific transaction rules
+  - [ ] Create merged transaction view
+  - [ ] Add connection filtering in transaction list
+
+### Phase 3: UI/UX Enhancements
+
+- [ ] Connection Management UI
+
+  - [ ] Add individual connection settings
+  - [ ] Create connection health dashboard
+  - [ ] Implement connection-specific refresh controls
+  - [ ] Add connection status indicators
+  - [ ] Create connection management modal
+
+- [ ] Transaction UI Updates
+  - [ ] Add connection indicators in transaction list
+  - [ ] Implement connection-based filtering
+  - [ ] Update transaction details view
+  - [ ] Add connection-specific search
+  - [ ] Create multi-connection summary view
+
+### Phase 4: Testing & Validation
+
+- [ ] Test Suite Development
+
+  - [ ] Create connection management tests
+  - [ ] Add multi-connection transaction tests
+  - [ ] Implement token management tests
+  - [ ] Add UI component tests
+  - [ ] Create end-to-end connection tests
+
+- [ ] Performance Optimization
+  - [ ] Optimize parallel API calls
+  - [ ] Implement connection data caching
+  - [ ] Add lazy loading for inactive connections
+  - [ ] Optimize database queries
+  - [ ] Add connection-aware data prefetching
+
+## Recent Changes (February 15, 2024)
+
+- Transaction Management Refactoring
+
+  - Implemented new `useTransactions` hook with comprehensive data management
+  - Added detailed logging throughout transaction lifecycle
+  - Enhanced error handling with retries and proper error propagation
+  - Improved transaction filtering and grouping logic
+  - Added transaction categorization support
+  - Implemented date range filtering with proper date handling
+  - Enhanced search functionality with description and merchant name support
+  - Added category-based filtering with dynamic category fetching
+  - Improved transaction grouping with daily totals
+
+- Multiple Bank Connections Support (In Progress)
+  - Database schema ready for multiple connections
+  - UI components updated to display multiple banks
+  - Basic connection management implemented
+  - TODO:
+    - Update token management for multiple active connections
+    - Enhance transaction fetching across all connections
+    - Improve connection state management
+    - Update service layer for true multi-bank support
+
 ## Recent Changes (February 14, 2024)
 
 - Multiple Bank Connections Support
