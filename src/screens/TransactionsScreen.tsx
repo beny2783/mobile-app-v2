@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   RefreshControl,
   ActivityIndicator,
   SectionList,
@@ -11,13 +10,9 @@ import {
   TextInput,
   ScrollView,
 } from 'react-native';
-import { getTrueLayerService } from '../services/trueLayer';
-import { TRUELAYER } from '../constants';
 import { colors } from '../constants/theme';
-import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../services/supabase';
 import { Transaction } from '../types';
-import { ChallengeTrackingService } from '../services/challengeTracking';
+import { useTransactions } from '../hooks/useTransactions';
 
 interface TransactionSection {
   title: string;
@@ -26,187 +21,25 @@ interface TransactionSection {
 }
 
 export default function TransactionsScreen() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState({
-    from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
-    to: new Date(),
-  });
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categories, setCategories] = useState<string[]>([]);
-  const challengeTracking = React.useMemo(() => new ChallengeTrackingService(), []);
+  console.log('🏦 Rendering TransactionsScreen');
 
-  const trueLayer = getTrueLayerService();
-
-  // Add effect to clear transactions when no active connection exists
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-        if (userError || !user) return;
-
-        const { data: connections } = await supabase
-          .from('bank_connections')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .is('disconnected_at', null)
-          .not('encrypted_access_token', 'is', null)
-          .limit(1);
-
-        if (!connections || connections.length === 0) {
-          console.log('No active connections, clearing transactions');
-          setTransactions([]);
-        }
-      } catch (error) {
-        console.error('Error checking connection:', error);
-      }
-    };
-
-    checkConnection();
-  }, []);
-
-  // Update fetchTransactions to clear data if no active connection
-  const fetchTransactions = async () => {
-    try {
-      setError(null);
-      setLoading(true);
-
-      const data = await trueLayer.fetchTransactions(dateRange.from, dateRange.to);
-
-      // If no data returned and no error, assume no active connection
-      if (data.length === 0) {
-        setTransactions([]);
-      } else {
-        setTransactions(data);
-
-        // Update challenge progress with new transactions
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          await challengeTracking.updateChallengeProgress(user.id, data);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch transactions:', error);
-      setError('Failed to load transactions');
-      setTransactions([]); // Clear transactions on error
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      console.log('🔍 Starting category fetch...');
-
-      // First check if we're authenticated
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError) {
-        console.error('Auth error:', authError);
-        return;
-      }
-      console.log('👤 Authenticated as:', user?.id);
-
-      // Then fetch categories
-      const { data, error } = await supabase
-        .from('merchant_categories')
-        .select('*')
-        .or(`user_id.is.null,user_id.eq.${user?.id}`);
-
-      console.log('🔄 Query completed');
-      console.log('❌ Error:', error);
-      console.log('📦 Data:', data);
-      console.log('🔍 Query details:', {
-        sql: `SELECT * FROM merchant_categories WHERE user_id IS NULL OR user_id = '${user?.id}'`,
-        rowCount: data?.length || 0,
-      });
-
-      if (error) {
-        console.error('Failed to fetch categories:', error);
-        return;
-      }
-
-      if (!data || data.length === 0) {
-        console.log('⚠️ No data returned from categories query');
-        return;
-      }
-
-      // Get unique categories
-      const uniqueCategories = Array.from(new Set(data.map((c) => c.category))).sort();
-      console.log('🏷️ Unique categories:', uniqueCategories);
-      console.log('📊 Total unique categories:', uniqueCategories.length);
-      setCategories(uniqueCategories);
-    } catch (err) {
-      console.error('💥 Error in fetchCategories:', err);
-    }
-  };
-
-  // First get filtered transactions
-  const filteredTransactions = React.useMemo(() => {
-    return transactions.filter((t) => {
-      const matchesSearch =
-        searchQuery === '' ||
-        t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.merchant_name?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-
-      const matchesCategory = !selectedCategory || t.transaction_category === selectedCategory;
-
-      return matchesSearch && matchesCategory;
-    });
-  }, [transactions, searchQuery, selectedCategory]);
-
-  // Then use filteredTransactions for grouping
-  const groupedTransactions: TransactionSection[] = React.useMemo(() => {
-    const groups: { [key: string]: Transaction[] } = {};
-
-    // Sort transactions by date (newest first)
-    const sortedTransactions = [...filteredTransactions].sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-
-    // Group by date
-    sortedTransactions.forEach((transaction) => {
-      const date = new Date(transaction.timestamp).toLocaleDateString();
-      if (!groups[date]) groups[date] = [];
-      groups[date].push(transaction);
-    });
-
-    // Convert to sections with totals
-    return Object.entries(groups).map(([date, transactions]) => ({
-      title: date,
-      data: transactions,
-      totalAmount: transactions.reduce((sum, t) => sum + t.amount, 0),
-    }));
-  }, [filteredTransactions]); // Only depend on filteredTransactions
-
-  // Fetch transactions when date range changes
-  useEffect(() => {
-    fetchTransactions();
-  }, [dateRange]);
-
-  // Fetch categories on mount
-  useEffect(() => {
-    fetchCategories();
-  }, []);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchTransactions();
-  };
+  const {
+    loading,
+    error,
+    refreshing,
+    refresh,
+    setDateRange,
+    setSearchQuery,
+    setSelectedCategory,
+    categories,
+    selectedCategory,
+    searchQuery,
+    dateRange,
+    groupedTransactions,
+  } = useTransactions();
 
   const setDateFilter = (days: number) => {
+    console.log('📅 Setting date filter:', { days });
     const now = new Date();
     setDateRange({
       from: new Date(now.getTime() - days * 24 * 60 * 60 * 1000),
@@ -253,8 +86,10 @@ export default function TransactionsScreen() {
   );
 
   const renderCategoryFilters = () => {
-    console.log('🎨 Rendering categories:', categories);
-    console.log('🎯 Selected category:', selectedCategory);
+    console.log('🎨 Rendering category filters:', {
+      categories: categories.length,
+      selected: selectedCategory,
+    });
 
     if (categories.length === 0) {
       console.log('⚠️ No categories available');
@@ -365,7 +200,7 @@ export default function TransactionsScreen() {
         renderItem={renderTransaction}
         renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.transaction_id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         ListEmptyComponent={<Text style={styles.emptyText}>No transactions found</Text>}
       />
     </View>
