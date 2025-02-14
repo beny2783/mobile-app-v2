@@ -199,7 +199,7 @@ export default function TransactionsScreen() {
         sections={groupedTransactions}
         renderItem={renderTransaction}
         renderSectionHeader={renderSectionHeader}
-        keyExtractor={(item) => item.transaction_id}
+        keyExtractor={(item) => `${item.connection_id || 'default'}-${item.transaction_id}`}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         ListEmptyComponent={<Text style={styles.emptyText}>No transactions found</Text>}
       />

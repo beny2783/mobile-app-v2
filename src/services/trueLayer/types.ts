@@ -64,10 +64,10 @@ export interface ITrueLayerApiService {
 
 export interface ITrueLayerStorageService {
   storeTokens(userId: string, tokens: TokenResponse): Promise<string>;
-  getStoredToken(userId: string): Promise<string | null>;
+  getStoredToken(userId: string, connectionId: string): Promise<string | null>;
   storeTransactions(userId: string, transactions: Transaction[]): Promise<void>;
   storeBalances(userId: string, connectionId: string, balances: any): Promise<void>;
-  getActiveConnection(userId: string): Promise<BankConnection | null>;
+  getActiveConnection(userId: string, connectionId?: string): Promise<BankConnection | null>;
   disconnectBank(connectionId: string): Promise<void>;
 }
 

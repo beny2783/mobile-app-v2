@@ -42,20 +42,40 @@ export class TrueLayerTransactionService implements ITrueLayerTransactionService
   }
 
   async updateTransactionHistory(userId: string, days: number = 30): Promise<void> {
-    const token = await this.storageService.getStoredToken(userId);
-    if (!token) throw new Error('No valid token available');
+    // Get all active connections for the user
+    const { data: connections, error: connError } = await supabase
+      .from('bank_connections')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .is('disconnected_at', null);
+
+    if (connError) throw new Error('Failed to fetch bank connections');
+    if (!connections?.length) throw new Error('No active bank connections found');
 
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - days);
 
-    // Fetch transactions from API
-    const transactions = await this.apiService.fetchTransactions(token, fromDate);
+    // Update transactions for each connection
+    for (const connection of connections) {
+      try {
+        const token = await this.storageService.getStoredToken(userId, connection.id);
+        if (!token) continue;
 
-    // Process and categorize transactions
-    const processedTransactions = await this.processTransactions(transactions);
-    const categorizedTransactions = await this.categorizeTransactions(processedTransactions);
+        // Fetch transactions from API
+        const transactions = await this.apiService.fetchTransactions(token, fromDate);
 
-    // Store the transactions
-    await this.storageService.storeTransactions(userId, categorizedTransactions);
+        // Process and categorize transactions
+        const processedTransactions = await this.processTransactions(transactions);
+        const categorizedTransactions = await this.categorizeTransactions(processedTransactions);
+
+        // Store the transactions
+        await this.storageService.storeTransactions(userId, categorizedTransactions);
+      } catch (error) {
+        console.error(`Failed to update transactions for connection ${connection.id}:`, error);
+        // Continue with other connections even if one fails
+        continue;
+      }
+    }
   }
 }

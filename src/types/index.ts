@@ -11,6 +11,7 @@ export interface Profile extends User {
 export interface Transaction {
   transaction_id: string;
   account_id: string;
+  connection_id: string;
   timestamp: string;
   description: string;
   amount: number;

@@ -56,9 +56,9 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
     }
   }
 
-  async getStoredToken(userId: string): Promise<string | null> {
+  async getStoredToken(userId: string, connectionId: string): Promise<string | null> {
     try {
-      const connection = await this.getActiveConnection(userId);
+      const connection = await this.getActiveConnection(userId, connectionId);
       if (!connection) {
         throw new TrueLayerError(
           'No active connection found',
@@ -199,15 +199,22 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
       .eq('id', connectionId);
   }
 
-  async getActiveConnection(userId: string): Promise<BankConnection | null> {
+  async getActiveConnection(userId: string, connectionId?: string): Promise<BankConnection | null> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('bank_connections')
         .select('*')
         .eq('user_id', userId)
         .eq('status', 'active')
         .is('disconnected_at', null)
-        .not('encrypted_access_token', 'is', null)
+        .not('encrypted_access_token', 'is', null);
+
+      // If connectionId is provided, get that specific connection
+      if (connectionId) {
+        query = query.eq('id', connectionId);
+      }
+
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(1)
         .single();

@@ -41,12 +41,37 @@ export class TrueLayerService {
     } = await supabase.auth.getUser();
     if (userError || !user) throw new Error('No authenticated user found');
 
-    const token = await this.storageService.getStoredToken(user.id);
-    if (!token) throw new Error('No valid token available');
+    // Get all active connections for the user
+    const { data: connections, error: connError } = await supabase
+      .from('bank_connections')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .is('disconnected_at', null);
 
-    const transactions = await this.apiService.fetchTransactions(token, fromDate, toDate);
-    const processedTransactions = await this.transactionService.processTransactions(transactions);
-    return this.transactionService.categorizeTransactions(processedTransactions);
+    if (connError) throw new Error('Failed to fetch bank connections');
+    if (!connections?.length) throw new Error('No active bank connections found');
+
+    // Fetch and merge transactions from all connections
+    const allTransactions: Transaction[] = [];
+    for (const connection of connections) {
+      try {
+        const token = await this.storageService.getStoredToken(user.id, connection.id);
+        if (!token) continue;
+
+        const transactions = await this.apiService.fetchTransactions(token, fromDate, toDate);
+        const processedTransactions = await this.transactionService.processTransactions(
+          transactions.map((t) => ({ ...t, connection_id: connection.id }))
+        );
+        allTransactions.push(...processedTransactions);
+      } catch (error) {
+        console.error(`Failed to fetch transactions for connection ${connection.id}:`, error);
+        // Continue with other connections even if one fails
+        continue;
+      }
+    }
+
+    return this.transactionService.categorizeTransactions(allTransactions);
   }
 
   async disconnectBank(connectionId: string): Promise<void> {
@@ -55,7 +80,7 @@ export class TrueLayerService {
 
   private async initializeConnection(userId: string, connectionId: string): Promise<void> {
     try {
-      const token = await this.storageService.getStoredToken(userId);
+      const token = await this.storageService.getStoredToken(userId, connectionId);
       if (!token) throw new Error('No valid token available');
 
       // First fetch and store balances to ensure accounts are created

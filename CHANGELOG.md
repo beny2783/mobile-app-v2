@@ -57,6 +57,11 @@
   - [x] Modify balance fetching for multiple connections
   - [x] Update transaction syncing for multiple banks
   - [x] Improve disconnection to only remove specific connection data
+  - [x] Fix transaction handling for multiple banks
+    - [x] Add connection_id to Transaction interface
+    - [x] Update fetchTransactions to include connection_id
+    - [x] Fix duplicate transaction key issues in UI
+    - [x] Ensure proper transaction attribution to banks
 
 - [x] Connect Banks Screen Updates
 
@@ -359,15 +364,16 @@
   - Added category-based filtering with dynamic category fetching
   - Improved transaction grouping with daily totals
 
-- Multiple Bank Connections Support (In Progress)
-  - Database schema ready for multiple connections
-  - UI components updated to display multiple banks
-  - Basic connection management implemented
-  - TODO:
-    - Update token management for multiple active connections
-    - Enhance transaction fetching across all connections
-    - Improve connection state management
-    - Update service layer for true multi-bank support
+- Multiple Bank Connections Support (Continued)
+  - Fixed transaction handling for multiple bank connections:
+    - Added connection_id to Transaction interface for proper bank attribution
+    - Updated TrueLayerService to include connection_id when fetching transactions
+    - Fixed UI issues with duplicate transaction keys in TransactionsScreen
+    - Ensured transactions are properly attributed to their respective banks
+  - Verified working functionality:
+    - Multiple banks can be connected simultaneously
+    - Transactions are correctly associated with their source banks
+    - UI properly handles and displays transactions from multiple sources
 
 ## Recent Changes (February 14, 2024)
 
