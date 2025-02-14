@@ -204,67 +204,30 @@ export default function ConnectBankScreen() {
     }
   };
 
-  const handleConnectBank = async () => {
+  const handleBankConnection = async () => {
+    setLoading(true);
+    setError(null);
+    setStatus('connecting');
+
     try {
-      setLoading(true);
-      setError(null);
-      setStatus('connecting');
-      logDebugInfo('🏦 Starting new bank connection process');
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      logDebugInfo(`👤 User authenticated: ${user?.id}`);
-
-      // Check existing connections first
-      const { data: existingConnections } = await supabase
-        .from('bank_connections')
-        .select('*')
-        .eq('user_id', user?.id)
-        .eq('status', 'active')
-        .is('disconnected_at', null);
-
-      console.log('🔍 Current Active Connections:', {
-        count: existingConnections?.length || 0,
-        connections: existingConnections?.map((conn) => ({
-          id: conn.id,
-          provider: conn.provider,
-          bank_name: conn.bank_name || 'Unknown Bank',
-          created_at: new Date(conn.created_at).toLocaleString(),
-        })),
-      });
-
+      logDebugInfo('🔄 Starting bank connection...');
       const authUrl = trueLayer.getAuthUrl();
-      logDebugInfo(`🔗 Generated Auth URL: ${authUrl}`);
+      logDebugInfo(`🔗 Auth URL generated: ${authUrl}`);
 
-      await WebBrowser.warmUpAsync();
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, TRUELAYER.REDIRECT_URI);
+      logDebugInfo(`📱 Browser session result: ${result.type}`);
 
-      const result = await WebBrowser.openAuthSessionAsync(
-        authUrl,
-        'spendingtracker://auth/callback',
-        {
-          showInRecents: true,
-          preferEphemeralSession: true,
-        }
-      );
-
-      logDebugInfo(`📱 WebBrowser result: ${JSON.stringify(result)}`);
-
-      if (result.type === 'success' && result.url) {
-        const url = new URL(result.url);
-        const code = url.searchParams.get('code');
+      if (result.type === 'success') {
+        const url = result.url;
+        const code = new URL(url).searchParams.get('code');
 
         if (code) {
-          logDebugInfo(`✅ Got authorization code: ${code.substring(0, 10)}...`);
+          logDebugInfo('🔑 Auth code received, exchanging...');
           try {
             await trueLayer.exchangeCode(code);
             logDebugInfo('🔄 Code exchange successful');
 
-            // Fetch initial transactions and balances
-            logDebugInfo('📥 Fetching initial data...');
-            await Promise.all([trueLayer.fetchTransactions(), fetchAndStoreBalances()]);
-            logDebugInfo('✅ Initial data fetched successfully');
-
+            // The new implementation handles fetching initial data during exchangeCode
             await checkBankConnection();
             setStatus('connected');
             navigation.navigate('Transactions');
@@ -288,89 +251,6 @@ export default function ConnectBankScreen() {
       setStatus('error');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchAndStoreBalances = async () => {
-    try {
-      logDebugInfo('Fetching balances...');
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error('No authenticated user found');
-
-      // Get current active connection
-      const { data: connection } = await supabase
-        .from('bank_connections')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .is('disconnected_at', null)
-        .single();
-
-      if (!connection) throw new Error('No active connection found');
-
-      logDebugInfo(`Found active connection: ${connection.id}`);
-
-      // Fetch balances from TrueLayer
-      const { accounts, balances } = await trueLayer.getBalances();
-
-      logDebugInfo('Raw balance data:');
-      logDebugInfo(`Accounts: ${JSON.stringify(accounts.results, null, 2)}`);
-      logDebugInfo(`Balances: ${JSON.stringify(balances, null, 2)}`);
-
-      // First, create or update bank accounts
-      for (let i = 0; i < accounts.results.length; i++) {
-        const account = accounts.results[i];
-        const balance = balances[i];
-
-        // Create or update bank account
-        const { error: accountError } = await supabase.from('bank_accounts').upsert(
-          {
-            user_id: user.id,
-            connection_id: connection.id,
-            account_id: account.account_id,
-            account_type: account.account_type,
-            account_name: account.display_name || account.account_type,
-            currency: balance.currency,
-            balance: balance.current,
-            last_updated: new Date().toISOString(),
-          },
-          {
-            onConflict: 'user_id,connection_id,account_id',
-          }
-        );
-
-        if (accountError) {
-          logDebugInfo(`Error creating bank account: ${accountError.message}`);
-          throw accountError;
-        }
-      }
-
-      // Now create the balance records
-      const balanceRecords = accounts.results.map((account: any, index: number) => ({
-        user_id: user.id,
-        connection_id: connection.id,
-        account_id: account.account_id,
-        current: balances[index].current,
-        available: balances[index].available,
-        currency: balances[index].currency,
-      }));
-
-      logDebugInfo(`Inserting ${balanceRecords.length} balance records...`);
-      const { error: balanceError } = await supabase.from('balances').insert(balanceRecords);
-
-      if (balanceError) {
-        logDebugInfo(`Error inserting balances: ${balanceError.message}`);
-        throw balanceError;
-      }
-
-      logDebugInfo('Successfully stored balances');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logDebugInfo(`Error in fetchAndStoreBalances: ${errorMessage}`);
-      throw error;
     }
   };
 
@@ -480,7 +360,7 @@ export default function ConnectBankScreen() {
       <View style={styles.addBankCard}>
         <TouchableOpacity
           style={styles.connectButton}
-          onPress={handleConnectBank}
+          onPress={handleBankConnection}
           disabled={status === 'connecting'}
         >
           <View style={styles.connectButtonContent}>
