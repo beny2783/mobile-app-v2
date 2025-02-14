@@ -124,19 +124,90 @@ export function useTransactions(): UseTransactionsResult {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('merchant_categories')
-        .select('*')
-        .or(`user_id.is.null,user_id.eq.${user?.id}`);
+      console.log('👤 useTransactions: User status:', {
+        isAuthenticated: !!user,
+        userId: user?.id,
+      });
+
+      // Query for both system categories and user categories if user exists
+      let query = supabase.from('merchant_categories').select('category');
+
+      if (user) {
+        console.log(
+          '🔍 useTransactions: Querying for system and user categories with user:',
+          user.id
+        );
+        query = query.or(`user_id.is.null,user_id.eq.${user.id}`);
+      } else {
+        console.log('🔍 useTransactions: Querying only system categories');
+        query = query.is('user_id', null);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('❌ useTransactions: Failed to fetch categories:', error);
         return;
       }
 
+      console.log('📊 useTransactions: Raw category data:', data);
+
       if (!data || data.length === 0) {
-        console.log('⚠️ useTransactions: No categories found');
-        return;
+        console.log('⚠️ useTransactions: No categories found. Inserting defaults...');
+
+        // Only proceed if we have a user
+        if (!user) {
+          console.log('❌ useTransactions: Cannot insert default categories without a user');
+          return;
+        }
+
+        const defaultCategories = [
+          {
+            merchant_pattern:
+              'DIRECT DEBIT|BILL PAYMENT|COUNCIL TAX|VODAFONE|EE|VIRGIN|BRITISH GAS|WATER',
+            category: 'Bills',
+          },
+          { merchant_pattern: 'UBER|TRAINLINE|TFL|SHELL|BP|ESSO', category: 'Transport' },
+          { merchant_pattern: 'AMAZON|PAYPAL|EBAY|ASOS', category: 'Shopping' },
+          {
+            merchant_pattern: 'TESCO|SAINSBURY|ASDA|WAITROSE|LIDL|ALDI|M&S',
+            category: 'Groceries',
+          },
+          {
+            merchant_pattern: 'DELIVEROO|JUST EAT|UBER EATS|COSTA|STARBUCKS|PRET|MCDONALDS',
+            category: 'Food & Drink',
+          },
+          {
+            merchant_pattern: 'SPOTIFY|NETFLIX|APPLE.COM/BILL|DISNEY PLUS|PRIME VIDEO|CINEMA',
+            category: 'Entertainment',
+          },
+          { merchant_pattern: 'PHARMACY|GYM|FITNESS|PURE GYM', category: 'Health' },
+        ];
+
+        // Insert categories as user-specific categories
+        const { data: insertedData, error: insertError } = await supabase
+          .from('merchant_categories')
+          .insert(
+            defaultCategories.map((cat) => ({
+              ...cat,
+              user_id: user.id, // Set user_id to the current user's ID
+            }))
+          )
+          .select('category');
+
+        if (insertError) {
+          console.error('❌ useTransactions: Failed to insert default categories:', insertError);
+          return;
+        }
+
+        console.log('✅ useTransactions: Successfully inserted default categories:', insertedData);
+
+        // Use the inserted categories
+        if (insertedData) {
+          const uniqueCategories = Array.from(new Set(insertedData.map((c) => c.category))).sort();
+          setCategories(uniqueCategories);
+          return;
+        }
       }
 
       const uniqueCategories = Array.from(new Set(data.map((c) => c.category))).sort();
