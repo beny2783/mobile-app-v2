@@ -89,6 +89,8 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
 
   async storeTransactions(userId: string, transactions: Transaction[]): Promise<void> {
     try {
+      console.log(`💾 Storing ${transactions.length} transactions for user ${userId}`);
+
       const connection = await this.getActiveConnection(userId);
       if (!connection) {
         throw new TrueLayerError(
@@ -100,11 +102,23 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
       const transactionRecords = transactions.map((transaction) => ({
         user_id: userId,
         connection_id: connection.id,
-        ...transaction,
+        transaction_id: transaction.transaction_id,
+        account_id: transaction.account_id || 'default',
+        timestamp: transaction.timestamp,
+        description: transaction.description || '',
+        amount: transaction.amount,
+        currency: transaction.currency,
+        transaction_type: transaction.transaction_type || 'unknown',
+        transaction_category: transaction.transaction_category || 'Uncategorized',
+        merchant_name: transaction.merchant_name || null,
       }));
 
-      const { error } = await supabase.from('transactions').insert(transactionRecords);
+      const { error } = await supabase.from('transactions').upsert(transactionRecords, {
+        onConflict: 'user_id,transaction_id',
+      });
+
       if (error) {
+        console.error('❌ Failed to store transactions:', error);
         throw new TrueLayerError(
           'Failed to store transactions',
           TrueLayerErrorCode.STORAGE_FAILED,
@@ -112,7 +126,20 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
           error
         );
       }
+
+      // Update last_sync on the connection
+      const { error: updateError } = await supabase
+        .from('bank_connections')
+        .update({ last_sync: new Date().toISOString() })
+        .eq('id', connection.id);
+
+      if (updateError) {
+        console.error('❌ Failed to update last_sync:', updateError);
+      }
+
+      console.log('✅ Successfully stored all transactions');
     } catch (error) {
+      console.error('❌ Transaction storage error:', error);
       if (error instanceof TrueLayerError) throw error;
       throw new TrueLayerError(
         'Failed to store transactions',
