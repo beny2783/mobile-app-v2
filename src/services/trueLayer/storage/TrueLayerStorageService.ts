@@ -1,6 +1,12 @@
 import { supabase } from '../../supabase';
 import { EncryptionService } from '../../encryption';
-import { ITrueLayerStorageService, TokenResponse, BankConnection } from '../types';
+import {
+  ITrueLayerStorageService,
+  TokenResponse,
+  BankConnection,
+  TrueLayerError,
+  TrueLayerErrorCode,
+} from '../types';
 import { Transaction } from '../../../types';
 
 export class TrueLayerStorageService implements ITrueLayerStorageService {
@@ -12,53 +18,109 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
   }
 
   async storeTokens(userId: string, tokens: TokenResponse): Promise<string> {
-    const { data, error } = await supabase
-      .from('bank_connections')
-      .insert({
-        user_id: userId,
-        provider: 'truelayer',
-        encrypted_access_token: this.encryption.encrypt(tokens.access_token),
-        encrypted_refresh_token: tokens.refresh_token
-          ? this.encryption.encrypt(tokens.refresh_token)
-          : null,
-        expires_at: new Date(Date.now() + tokens.expires_in * 1000),
-        status: 'active',
-        disconnected_at: null,
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('bank_connections')
+        .insert({
+          user_id: userId,
+          provider: 'truelayer',
+          encrypted_access_token: this.encryption.encrypt(tokens.access_token),
+          encrypted_refresh_token: tokens.refresh_token
+            ? this.encryption.encrypt(tokens.refresh_token)
+            : null,
+          expires_at: new Date(Date.now() + tokens.expires_in * 1000),
+          status: 'active',
+          disconnected_at: null,
+        })
+        .select()
+        .single();
 
-    if (error) {
-      throw error;
+      if (error) {
+        throw new TrueLayerError(
+          'Failed to store tokens',
+          TrueLayerErrorCode.STORAGE_FAILED,
+          undefined,
+          error
+        );
+      }
+
+      return data.id;
+    } catch (error) {
+      if (error instanceof TrueLayerError) throw error;
+      throw new TrueLayerError(
+        'Failed to store tokens',
+        TrueLayerErrorCode.STORAGE_FAILED,
+        undefined,
+        error
+      );
     }
-
-    return data.id;
   }
 
   async getStoredToken(userId: string): Promise<string | null> {
-    const connection = await this.getActiveConnection(userId);
-    if (!connection) return null;
-
     try {
-      return this.encryption.decrypt(connection.encrypted_access_token);
+      const connection = await this.getActiveConnection(userId);
+      if (!connection) {
+        throw new TrueLayerError(
+          'No active connection found',
+          TrueLayerErrorCode.NO_ACTIVE_CONNECTION
+        );
+      }
+
+      try {
+        return this.encryption.decrypt(connection.encrypted_access_token);
+      } catch (error) {
+        throw new TrueLayerError(
+          'Failed to decrypt token',
+          TrueLayerErrorCode.ENCRYPTION_FAILED,
+          undefined,
+          error
+        );
+      }
     } catch (error) {
-      console.error('Failed to decrypt token:', error);
-      return null;
+      if (error instanceof TrueLayerError) throw error;
+      throw new TrueLayerError(
+        'Failed to get stored token',
+        TrueLayerErrorCode.STORAGE_FAILED,
+        undefined,
+        error
+      );
     }
   }
 
   async storeTransactions(userId: string, transactions: Transaction[]): Promise<void> {
-    const connection = await this.getActiveConnection(userId);
-    if (!connection) throw new Error('No active connection found');
+    try {
+      const connection = await this.getActiveConnection(userId);
+      if (!connection) {
+        throw new TrueLayerError(
+          'No active connection found',
+          TrueLayerErrorCode.NO_ACTIVE_CONNECTION
+        );
+      }
 
-    const transactionRecords = transactions.map((transaction) => ({
-      user_id: userId,
-      connection_id: connection.id,
-      ...transaction,
-    }));
+      const transactionRecords = transactions.map((transaction) => ({
+        user_id: userId,
+        connection_id: connection.id,
+        ...transaction,
+      }));
 
-    const { error } = await supabase.from('transactions').insert(transactionRecords);
-    if (error) throw error;
+      const { error } = await supabase.from('transactions').insert(transactionRecords);
+      if (error) {
+        throw new TrueLayerError(
+          'Failed to store transactions',
+          TrueLayerErrorCode.STORAGE_FAILED,
+          undefined,
+          error
+        );
+      }
+    } catch (error) {
+      if (error instanceof TrueLayerError) throw error;
+      throw new TrueLayerError(
+        'Failed to store transactions',
+        TrueLayerErrorCode.STORAGE_FAILED,
+        undefined,
+        error
+      );
+    }
   }
 
   async storeBalances(userId: string, connectionId: string, balanceData: any): Promise<void> {
@@ -111,40 +173,73 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
   }
 
   async getActiveConnection(userId: string): Promise<BankConnection | null> {
-    const { data, error } = await supabase
-      .from('bank_connections')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .is('disconnected_at', null)
-      .not('encrypted_access_token', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('bank_connections')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .is('disconnected_at', null)
+        .not('encrypted_access_token', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-    if (error || !data) return null;
-    return data as BankConnection;
+      if (error) {
+        throw new TrueLayerError(
+          'Failed to get active connection',
+          TrueLayerErrorCode.STORAGE_FAILED,
+          undefined,
+          error
+        );
+      }
+
+      return data as BankConnection;
+    } catch (error) {
+      if (error instanceof TrueLayerError) throw error;
+      throw new TrueLayerError(
+        'Failed to get active connection',
+        TrueLayerErrorCode.STORAGE_FAILED,
+        undefined,
+        error
+      );
+    }
   }
 
   async disconnectBank(connectionId: string): Promise<void> {
-    const updates = [
-      supabase
-        .from('bank_connections')
-        .update({
-          status: 'disconnected',
-          disconnected_at: new Date().toISOString(),
-          encrypted_access_token: null,
-          encrypted_refresh_token: null,
-        })
-        .eq('id', connectionId),
-      supabase.from('bank_accounts').delete().eq('connection_id', connectionId),
-    ];
+    try {
+      const updates = [
+        supabase
+          .from('bank_connections')
+          .update({
+            status: 'disconnected',
+            disconnected_at: new Date().toISOString(),
+            encrypted_access_token: null,
+            encrypted_refresh_token: null,
+          })
+          .eq('id', connectionId),
+        supabase.from('bank_accounts').delete().eq('connection_id', connectionId),
+      ];
 
-    const results = await Promise.all(updates);
-    const errors = results.filter((result) => result.error);
+      const results = await Promise.all(updates);
+      const errors = results.filter((result) => result.error);
 
-    if (errors.length > 0) {
-      throw new Error('Failed to disconnect bank: ' + errors[0].error?.message);
+      if (errors.length > 0) {
+        throw new TrueLayerError(
+          'Failed to disconnect bank',
+          TrueLayerErrorCode.STORAGE_FAILED,
+          undefined,
+          errors[0].error
+        );
+      }
+    } catch (error) {
+      if (error instanceof TrueLayerError) throw error;
+      throw new TrueLayerError(
+        'Failed to disconnect bank',
+        TrueLayerErrorCode.STORAGE_FAILED,
+        undefined,
+        error
+      );
     }
   }
 }
