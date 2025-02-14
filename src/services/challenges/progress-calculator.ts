@@ -1,9 +1,12 @@
-import type { Challenge, UserChallenge, Transaction, ChallengeCriteria } from '../../types';
+import type { Challenge, UserChallenge, Transaction } from '../../types/challenges';
 
-export interface ChallengeProgress {
-  progress: Record<string, any>;
+interface ProgressResult {
   isCompleted: boolean;
   isFailed: boolean;
+  progress: {
+    total_spent: number;
+    [key: string]: any;
+  };
 }
 
 export class ChallengeProgressCalculator {
@@ -14,56 +17,43 @@ export class ChallengeProgressCalculator {
     userChallenge: UserChallenge,
     challenge: Challenge,
     transactions: Transaction[]
-  ): ChallengeProgress {
-    const criteria = challenge.criteria;
-    const progress = { ...userChallenge.progress };
-    let isCompleted = false;
-    let isFailed = false;
-
-    switch (criteria.type) {
-      case 'no_spend':
-        return this.calculateNoSpendProgress(userChallenge, criteria, transactions);
-      case 'reduced_spending':
-        return this.calculateReducedSpendingProgress(criteria, transactions);
-      case 'spending_reduction':
-        return this.calculateSpendingReductionProgress(criteria, transactions);
-      case 'savings':
-        return this.calculateSavingsProgress(criteria, transactions);
-      case 'streak':
-        return this.calculateStreakProgress(userChallenge, criteria);
-      case 'category_budget':
-        return this.calculateCategoryBudgetProgress(transactions);
-      case 'smart_shopping':
-        return this.calculateSmartShoppingProgress(criteria, transactions);
-      default:
-        return { progress, isCompleted, isFailed };
+  ): ProgressResult {
+    if (challenge.criteria.type === 'no_spend') {
+      return this.calculateNoSpendProgress(challenge, transactions);
     }
+
+    // Default response for unknown challenge types
+    return {
+      isCompleted: false,
+      isFailed: false,
+      progress: { total_spent: 0 },
+    };
   }
 
   private calculateNoSpendProgress(
-    userChallenge: UserChallenge,
-    criteria: ChallengeCriteria,
+    challenge: Challenge,
     transactions: Transaction[]
-  ): ChallengeProgress {
-    const nonEssentialSpending = transactions
-      .filter(
-        (t) =>
-          !criteria.exclude_categories?.includes(t.transaction_category) &&
-          new Date(t.timestamp) >= new Date(userChallenge.started_at)
-      )
-      .reduce((sum, t) => sum + (t.amount < 0 ? Math.abs(t.amount) : 0), 0);
+  ): ProgressResult {
+    const excludeCategories = challenge.criteria.exclude_categories || [];
+    const maxSpend = challenge.criteria.max_spend || 0;
 
-    const progress = { total_spent: nonEssentialSpending };
-    const isCompleted = nonEssentialSpending <= (criteria.max_spend || 0);
-    const isFailed = nonEssentialSpending > (criteria.max_spend || 0);
+    const totalSpent = transactions
+      .filter((t) => !excludeCategories.includes(t.transaction_category))
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-    return { progress, isCompleted, isFailed };
+    return {
+      isCompleted: totalSpent === 0,
+      isFailed: totalSpent > maxSpend,
+      progress: {
+        total_spent: totalSpent,
+      },
+    };
   }
 
   private calculateReducedSpendingProgress(
     criteria: ChallengeCriteria,
     transactions: Transaction[]
-  ): ChallengeProgress {
+  ): ProgressResult {
     const spending = transactions
       .filter(
         (t) =>
@@ -76,13 +66,19 @@ export class ChallengeProgressCalculator {
     const isCompleted = spending <= (criteria.max_spend || 0);
     const isFailed = spending > (criteria.max_spend || 0);
 
-    return { progress, isCompleted, isFailed };
+    return {
+      isCompleted,
+      isFailed,
+      progress: {
+        ...progress,
+      },
+    };
   }
 
   private calculateSpendingReductionProgress(
     criteria: ChallengeCriteria,
     transactions: Transaction[]
-  ): ChallengeProgress {
+  ): ProgressResult {
     const currentSpending = transactions
       .filter((t) => this.isWeekendTransaction(new Date(t.timestamp)))
       .reduce((sum, t) => sum + (t.amount < 0 ? Math.abs(t.amount) : 0), 0);
@@ -104,13 +100,19 @@ export class ChallengeProgressCalculator {
       transactions.length >= (criteria.min_transactions || 1) &&
       reductionPercentage < (criteria.reduction_target || 0) * 100;
 
-    return { progress, isCompleted, isFailed };
+    return {
+      isCompleted,
+      isFailed,
+      progress: {
+        ...progress,
+      },
+    };
   }
 
   private calculateSavingsProgress(
     criteria: ChallengeCriteria,
     transactions: Transaction[]
-  ): ChallengeProgress {
+  ): ProgressResult {
     const totalSaved = transactions
       .filter((t) => t.amount > 0)
       .reduce((sum, t) => sum + t.amount, 0);
@@ -119,13 +121,19 @@ export class ChallengeProgressCalculator {
     const isCompleted = totalSaved >= (criteria.target || 0);
     const isFailed = false; // Savings challenges can't fail, only complete
 
-    return { progress, isCompleted, isFailed };
+    return {
+      isCompleted,
+      isFailed,
+      progress: {
+        ...progress,
+      },
+    };
   }
 
   private calculateStreakProgress(
     userChallenge: UserChallenge,
     criteria: ChallengeCriteria
-  ): ChallengeProgress {
+  ): ProgressResult {
     const today = new Date();
     const streakDate = new Date(
       userChallenge.progress.last_streak_date || userChallenge.started_at
@@ -144,10 +152,16 @@ export class ChallengeProgressCalculator {
     const isCompleted = (progress.streak_count || 0) >= targetDays;
     const isFailed = !this.isConsecutiveDay(streakDate, today);
 
-    return { progress, isCompleted, isFailed };
+    return {
+      isCompleted,
+      isFailed,
+      progress: {
+        ...progress,
+      },
+    };
   }
 
-  private calculateCategoryBudgetProgress(transactions: Transaction[]): ChallengeProgress {
+  private calculateCategoryBudgetProgress(transactions: Transaction[]): ProgressResult {
     const spendingByCategory: Record<string, number> = {};
     const budgets = this.getCategoryBudgets();
     let allCategoriesUnderBudget = true;
@@ -164,16 +178,16 @@ export class ChallengeProgressCalculator {
     }
 
     return {
-      progress: { category_spending: spendingByCategory },
       isCompleted: allCategoriesUnderBudget,
       isFailed: !allCategoriesUnderBudget,
+      progress: { category_spending: spendingByCategory },
     };
   }
 
   private calculateSmartShoppingProgress(
     criteria: ChallengeCriteria,
     transactions: Transaction[]
-  ): ChallengeProgress {
+  ): ProgressResult {
     const savedAmount = transactions
       .filter((t) => t.amount > 0 && t.transaction_category === 'Refunds')
       .reduce((sum, t) => sum + t.amount, 0);
@@ -188,7 +202,13 @@ export class ChallengeProgressCalculator {
       transactions.length >= (criteria.min_transactions || 0);
     const isFailed = false; // Smart shopping challenges can't fail, only complete
 
-    return { progress, isCompleted, isFailed };
+    return {
+      isCompleted,
+      isFailed,
+      progress: {
+        ...progress,
+      },
+    };
   }
 
   private isWithinTimeWindow(date: Date, timeWindow?: string): boolean {
