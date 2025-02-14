@@ -109,13 +109,19 @@
     - [ ] Debug RLS policies
     - [ ] Verify query formatting
     - [ ] Check authentication flow
-- [ ] Analytics and Insights
-  - [ ] Add spending insights section
-  - [ ] Show spending trends compared to previous periods
-  - [ ] Display category-wise spending breakdown
-  - [ ] Implement visual charts and graphs
-  - [ ] Add month-over-month comparisons
-  - [ ] Show spending anomalies and patterns
+- [x] Analytics and Insights
+  - [x] Add spending insights section
+  - [x] Show spending trends compared to previous periods
+  - [x] Display category-wise spending breakdown
+  - [x] Implement visual charts and graphs
+  - [x] Add month-over-month comparisons
+  - [x] Show spending anomalies and patterns
+  - [x] Implement balance trends view
+  - [x] Add estimated balance projections
+  - [x] Show money in/out breakdown
+  - [x] Add interactive time range selection
+  - [ ] Add custom date range selection
+  - [ ] Implement savings goals tracking
 - [ ] Smart Transaction Grouping
   - [ ] Implement tabbed grouping interface
   - [ ] Group by date (enhanced current view)
@@ -457,3 +463,20 @@
 - 2024-02-11: Token management system implemented with encryption and secure storage
 - 2024-02-11: Successful end-to-end bank connection flow with TrueLayer sandbox
 - 2024-02-11: Implemented bank disconnection with transaction cleanup
+
+## Recent Changes (February 16, 2024)
+
+- Trends Screen Implementation
+  - Added comprehensive trends analysis with Balance and Spending views
+  - Implemented `useSpendingAnalysis` hook for spending insights
+  - Implemented `useBalanceAnalysis` hook for balance tracking
+  - Created reusable `SpendingView` and `BalanceView` components
+  - Added interactive charts using react-native-chart-kit
+  - Implemented category breakdown with pie charts
+  - Added spending insights with increase/decrease indicators
+  - Implemented balance projections and estimations
+  - Added time range selection (Month/Year views)
+  - Enhanced UI with modern design and smooth animations
+  - Added comprehensive type definitions for analysis data
+  - Integrated with existing transaction data system
+  - Added proper error handling and loading states
