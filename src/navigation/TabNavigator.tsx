@@ -5,6 +5,7 @@ import TransactionsScreen from '../screens/TransactionsScreen';
 import BalancesScreen from '../screens/BalancesScreen';
 import ChallengesScreen from '../screens/ChallengesScreen';
 import CallbackScreen from '../screens/CallbackScreen';
+import TrendsScreen from '../screens/TrendsScreen';
 import { colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { AppTabParamList } from '../types/navigation';
@@ -59,6 +60,15 @@ export function TabNavigator() {
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="list-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Trends"
+        component={TrendsScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="analytics-outline" size={size} color={color} />
           ),
         }}
       />

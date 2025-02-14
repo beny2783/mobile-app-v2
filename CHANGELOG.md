@@ -109,6 +109,27 @@
     - [ ] Debug RLS policies
     - [ ] Verify query formatting
     - [ ] Check authentication flow
+- [ ] Analytics and Insights
+  - [ ] Add spending insights section
+  - [ ] Show spending trends compared to previous periods
+  - [ ] Display category-wise spending breakdown
+  - [ ] Implement visual charts and graphs
+  - [ ] Add month-over-month comparisons
+  - [ ] Show spending anomalies and patterns
+- [ ] Smart Transaction Grouping
+  - [ ] Implement tabbed grouping interface
+  - [ ] Group by date (enhanced current view)
+  - [ ] Group by category with icons
+  - [ ] Group by merchant with logos
+  - [ ] Group by bank with bank icons
+  - [ ] Add sorting options within groups
+- [ ] Transaction Enrichment
+  - [ ] Add merchant logos and icons
+  - [ ] Include transaction location data
+  - [ ] Implement recurring payment detection
+  - [ ] Add spending category icons
+  - [ ] Enhanced transaction details view
+  - [ ] Smart merchant name cleanup
 
 ## 🔍 Phase 4: Transaction Features
 

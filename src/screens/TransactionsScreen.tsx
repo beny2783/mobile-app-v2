@@ -9,16 +9,28 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  Image,
 } from 'react-native';
 import { colors } from '../constants/theme';
 import { Transaction } from '../types';
 import { useTransactions } from '../hooks/useTransactions';
+import { useBankConnections } from '../hooks/useBankConnections';
+import { Ionicons } from '@expo/vector-icons';
 
 interface TransactionSection {
   title: string;
   data: Transaction[];
   totalAmount: number;
+  bankTotals: { [key: string]: { amount: number; name: string } };
 }
+
+// Add bank color mapping helper
+const getBankColor = (bankId: string) => {
+  // Generate a consistent color based on bankId
+  const colors = ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800', '#795548'];
+  const index = Math.abs(bankId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
+  return colors[index % colors.length];
+};
 
 export default function TransactionsScreen() {
   console.log('🏦 Rendering TransactionsScreen');
@@ -31,11 +43,15 @@ export default function TransactionsScreen() {
     setDateRange,
     setSearchQuery,
     setSelectedCategory,
+    setSelectedBank,
     categories,
     selectedCategory,
+    selectedBank,
     searchQuery,
     dateRange,
     groupedTransactions,
+    bankConnections,
+    transactions: filteredTransactions,
   } = useTransactions();
 
   const setDateFilter = (days: number) => {
@@ -84,6 +100,77 @@ export default function TransactionsScreen() {
       />
     </View>
   );
+
+  const renderBankFilter = () => {
+    if (!bankConnections.length) return null;
+
+    return (
+      <View style={styles.bankFilterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.bankContainer}
+          contentContainerStyle={styles.bankContent}
+        >
+          <TouchableOpacity
+            style={[styles.bankButton, !selectedBank && styles.bankButtonActive]}
+            onPress={() => setSelectedBank(null)}
+          >
+            <View style={styles.bankButtonContent}>
+              <View style={[styles.bankIcon, { backgroundColor: colors.primary }]}>
+                <Ionicons name="business" size={16} color="#FFF" />
+              </View>
+              <View style={styles.bankButtonTextContainer}>
+                <Text style={[styles.bankButtonText, !selectedBank && styles.bankButtonTextActive]}>
+                  All Banks
+                </Text>
+                <Text style={styles.bankTransactionCount}>
+                  {filteredTransactions.length} transactions
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+          {bankConnections.map((connection) => {
+            const bankColor = getBankColor(connection.id);
+            const transactionCount = filteredTransactions.filter(
+              (t: Transaction) => t.connection_id === connection.id
+            ).length;
+
+            return (
+              <TouchableOpacity
+                key={connection.id}
+                style={[
+                  styles.bankButton,
+                  selectedBank === connection.id && styles.bankButtonActive,
+                  { borderColor: selectedBank === connection.id ? bankColor : colors.border },
+                ]}
+                onPress={() => setSelectedBank(connection.id)}
+              >
+                <View style={styles.bankButtonContent}>
+                  <View style={[styles.bankIcon, { backgroundColor: bankColor }]}>
+                    <Text style={styles.bankInitial}>
+                      {(connection.bank_name || 'Bank')[0].toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.bankButtonTextContainer}>
+                    <Text
+                      style={[
+                        styles.bankButtonText,
+                        selectedBank === connection.id && styles.bankButtonTextActive,
+                      ]}
+                    >
+                      {connection.bank_name || 'Bank'}
+                    </Text>
+                    <Text style={styles.bankTransactionCount}>{transactionCount} transactions</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  };
 
   const renderCategoryFilters = () => {
     console.log('🎨 Rendering category filters:', {
@@ -143,19 +230,34 @@ export default function TransactionsScreen() {
 
   const renderSectionHeader = ({ section }: { section: TransactionSection }) => (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionDate}>{section.title}</Text>
-      <Text
-        style={[
-          styles.sectionTotal,
-          { color: section.totalAmount < 0 ? colors.error : colors.success },
-        ]}
-      >
-        {section.data[0].currency} {Math.abs(section.totalAmount).toFixed(2)}
-      </Text>
+      <View style={styles.sectionHeaderTop}>
+        <Text style={styles.sectionDate}>{section.title}</Text>
+        <Text
+          style={[
+            styles.sectionTotal,
+            { color: section.totalAmount < 0 ? colors.error : colors.success },
+          ]}
+        >
+          {section.data[0].currency} {Math.abs(section.totalAmount).toFixed(2)}
+        </Text>
+      </View>
+      {Object.keys(section.bankTotals).length > 1 && (
+        <View style={styles.bankTotals}>
+          {Object.entries(section.bankTotals).map(([bankId, { amount, name }]) => (
+            <Text key={bankId} style={styles.bankTotal}>
+              {name}: {amount < 0 ? '-' : '+'}
+              {section.data[0].currency} {Math.abs(amount).toFixed(2)}
+            </Text>
+          ))}
+        </View>
+      )}
     </View>
   );
 
   const renderTransaction = ({ item }: { item: Transaction }) => {
+    const bank = bankConnections.find((conn) => conn.id === item.connection_id);
+    const bankColor = bank ? getBankColor(bank.id) : colors.primary;
+
     return (
       <View style={styles.transactionCard}>
         <View style={styles.transactionHeader}>
@@ -163,7 +265,17 @@ export default function TransactionsScreen() {
             <Text style={styles.description} numberOfLines={2}>
               {item.description || 'Unknown Transaction'}
             </Text>
-            <Text style={styles.transactionCategory}>{item.transaction_category}</Text>
+            <View style={styles.transactionMeta}>
+              <Text style={styles.transactionCategory}>{item.transaction_category}</Text>
+              {bankConnections.length > 1 && (
+                <View style={styles.bankTag}>
+                  <View style={[styles.bankDot, { backgroundColor: bankColor }]} />
+                  <Text style={[styles.bankName, { color: bankColor }]}>
+                    {bank?.bank_name || 'Unknown Bank'}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
           <Text style={[styles.amount, { color: item.amount < 0 ? colors.error : colors.success }]}>
             {item.currency} {Math.abs(item.amount).toFixed(2)}
@@ -194,6 +306,7 @@ export default function TransactionsScreen() {
     <View style={styles.container}>
       {renderSearchBar()}
       {renderDateFilter()}
+      {renderBankFilter()}
       {renderCategoryFilters()}
       <SectionList
         sections={groupedTransactions}
@@ -366,5 +479,109 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.text.secondary,
     marginTop: 4,
+  },
+  bankFilterContainer: {
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  bankContainer: {
+    backgroundColor: colors.surface,
+    minHeight: 50,
+  },
+  bankContent: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bankButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minWidth: 140,
+  },
+  bankButtonActive: {
+    backgroundColor: colors.primary + '20',
+    borderColor: colors.primary,
+  },
+  bankButtonText: {
+    color: colors.text.primary,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  bankButtonTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  sectionHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  bankTotals: {
+    marginTop: 4,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  bankTotal: {
+    fontSize: 12,
+    color: colors.text.secondary,
+  },
+  transactionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bankName: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  bankButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  bankIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bankInitial: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  bankButtonTextContainer: {
+    flex: 1,
+  },
+  bankTransactionCount: {
+    fontSize: 11,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
+  bankTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  bankDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
 });

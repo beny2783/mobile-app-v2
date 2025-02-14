@@ -7,6 +7,7 @@ export type AppTabParamList = {
     | undefined;
   Balances: undefined;
   Transactions: undefined;
+  Trends: undefined;
   Challenges: undefined;
   Profile: undefined;
   Callback: { url: string } | undefined;

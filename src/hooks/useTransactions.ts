@@ -2,7 +2,9 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useServices } from '../contexts/ServiceContext';
 import { useDataFetching } from './useDataFetching';
 import { supabase } from '../services/supabase';
+import { useBankConnections } from './useBankConnections';
 import type { Transaction } from '../types';
+import type { BankConnection } from '../services/trueLayer/types';
 
 interface DateRange {
   from: Date;
@@ -18,14 +20,18 @@ interface UseTransactionsResult {
   setDateRange: (range: DateRange) => void;
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string | null) => void;
+  setSelectedBank: (bankId: string | null) => void;
   categories: string[];
   selectedCategory: string | null;
+  selectedBank: string | null;
   searchQuery: string;
   dateRange: DateRange;
+  bankConnections: BankConnection[];
   groupedTransactions: {
     title: string;
     data: Transaction[];
     totalAmount: number;
+    bankTotals: { [key: string]: { amount: number; name: string } };
   }[];
 }
 
@@ -33,11 +39,13 @@ export function useTransactions(): UseTransactionsResult {
   console.log('🎣 useTransactions: Hook initialized');
 
   const { trueLayerService } = useServices();
+  const { connections } = useBankConnections();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
     to: new Date(),
   });
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedBank, setSelectedBank] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
 
@@ -49,10 +57,11 @@ export function useTransactions(): UseTransactionsResult {
         to: dateRange.to.toISOString(),
       },
       selectedCategory,
+      selectedBank,
       searchQuery,
       categoriesCount: categories.length,
     });
-  }, [dateRange, selectedCategory, searchQuery, categories]);
+  }, [dateRange, selectedCategory, selectedBank, searchQuery, categories]);
 
   // Fetch transactions using our data fetching hook
   const fetchTransactions = useCallback(async () => {
@@ -150,12 +159,13 @@ export function useTransactions(): UseTransactionsResult {
     };
   }, [fetchCategories]);
 
-  // Filter transactions based on search and category
+  // Filter transactions based on search, category, and bank
   const filteredTransactions = useMemo(() => {
     console.log('🔍 useTransactions: Filtering transactions:', {
       total: transactions.length,
       searchQuery,
       selectedCategory,
+      selectedBank,
     });
 
     const filtered = transactions.filter((t) => {
@@ -166,7 +176,9 @@ export function useTransactions(): UseTransactionsResult {
 
       const matchesCategory = !selectedCategory || t.transaction_category === selectedCategory;
 
-      return matchesSearch && matchesCategory;
+      const matchesBank = !selectedBank || t.connection_id === selectedBank;
+
+      return matchesSearch && matchesCategory && matchesBank;
     });
 
     console.log('✨ useTransactions: Filtered transactions:', {
@@ -174,12 +186,13 @@ export function useTransactions(): UseTransactionsResult {
       after: filtered.length,
       searchFiltered: searchQuery !== '',
       categoryFiltered: selectedCategory !== null,
+      bankFiltered: selectedBank !== null,
     });
 
     return filtered;
-  }, [transactions, searchQuery, selectedCategory]);
+  }, [transactions, searchQuery, selectedCategory, selectedBank]);
 
-  // Group transactions by date
+  // Group transactions by date with bank totals
   const groupedTransactions = useMemo(() => {
     console.log('📊 useTransactions: Grouping transactions:', {
       filtered: filteredTransactions.length,
@@ -200,11 +213,33 @@ export function useTransactions(): UseTransactionsResult {
     });
 
     // Convert to sections with totals
-    const sections = Object.entries(groups).map(([date, transactions]) => ({
-      title: date,
-      data: transactions,
-      totalAmount: transactions.reduce((sum, t) => sum + t.amount, 0),
-    }));
+    const sections = Object.entries(groups).map(([date, transactions]) => {
+      const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0);
+
+      // Calculate per-bank totals
+      const bankTotals = transactions.reduce(
+        (totals, t) => {
+          const bankId = t.connection_id;
+          const bank = connections.find((c) => c.id === bankId);
+          if (!totals[bankId]) {
+            totals[bankId] = {
+              amount: 0,
+              name: bank?.bank_name || 'Unknown Bank',
+            };
+          }
+          totals[bankId].amount += t.amount;
+          return totals;
+        },
+        {} as { [key: string]: { amount: number; name: string } }
+      );
+
+      return {
+        title: date,
+        data: transactions,
+        totalAmount,
+        bankTotals,
+      };
+    });
 
     console.log('✨ useTransactions: Grouped into sections:', {
       sectionCount: sections.length,
@@ -218,7 +253,7 @@ export function useTransactions(): UseTransactionsResult {
     });
 
     return sections;
-  }, [filteredTransactions]);
+  }, [filteredTransactions, connections]);
 
   // Log when the hook returns new values
   const result = {
@@ -230,10 +265,13 @@ export function useTransactions(): UseTransactionsResult {
     setDateRange,
     setSearchQuery,
     setSelectedCategory,
+    setSelectedBank,
     categories,
     selectedCategory,
+    selectedBank,
     searchQuery,
     dateRange,
+    bankConnections: connections,
     groupedTransactions,
   };
 
