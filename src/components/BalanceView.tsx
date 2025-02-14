@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,20 +14,34 @@ interface BalanceViewProps {
 }
 
 export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTimeRangeChange }) => {
+  const [selectedPoint, setSelectedPoint] = useState<{
+    value: number;
+    date: string;
+    index: number;
+  } | null>(null);
+
+  const handleDataPointClick = (value: number, date: string, index: number) => {
+    setSelectedPoint({ value, date, index });
+  };
+
   return (
     <View style={styles.container}>
       {/* Balance Overview */}
       <View style={styles.header}>
         <Text style={styles.title}>This {timeRange.type.toLowerCase()}</Text>
         <Text style={styles.amount}>{formatCurrency(data.currentBalance)}</Text>
-        <Text style={styles.subtitle}>Today's Balance</Text>
+        <Text style={styles.subtitle}>
+          {selectedPoint
+            ? `Balance on ${formatDate(new Date(selectedPoint.date))}`
+            : "Today's Balance"}
+        </Text>
       </View>
 
       {/* Balance Chart */}
       <View style={styles.chartWrapper}>
         <LineChart
           data={{
-            labels: [],
+            labels: data.chartData.labels.map((d) => formatDate(new Date(d))),
             datasets: [
               {
                 data: data.chartData.current,
@@ -44,26 +58,51 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
           }}
           width={width - 32}
           height={180}
-          withHorizontalLabels={false}
-          withVerticalLabels={false}
-          withDots={false}
+          withHorizontalLabels={true}
+          withVerticalLabels={true}
+          withDots={true}
+          withShadow={false}
           chartConfig={{
             backgroundColor: '#0A1A2F',
             backgroundGradientFrom: '#0A1A2F',
             backgroundGradientTo: '#0A1A2F',
             decimalPlaces: 0,
             color: (opacity = 1) => `rgba(46, 196, 182, ${opacity})`,
+            labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
             style: {
               borderRadius: 16,
+            },
+            propsForDots: {
+              r: selectedPoint ? '4' : '6',
+              strokeWidth: '2',
+              stroke: '#2EC4B6',
+              fill: '#0A1A2F',
+            },
+            propsForLabels: {
+              fontSize: 10,
             },
           }}
           bezier
           style={styles.chart}
+          onDataPointClick={({ value, dataset, getColor, index }) => {
+            handleDataPointClick(value, data.chartData.labels[index], index);
+          }}
         />
-        <View style={styles.chartLabels}>
-          <Text style={styles.chartLabel}>{formatDate(timeRange.startDate)}</Text>
-          <Text style={styles.chartLabel}>{formatDate(timeRange.endDate)}</Text>
-        </View>
+        {selectedPoint && (
+          <View
+            style={[
+              styles.tooltip,
+              {
+                top: 40,
+                left:
+                  (width - 32) * (selectedPoint.index / (data.chartData.labels.length - 1)) - 40,
+              },
+            ]}
+          >
+            <Text style={styles.tooltipText}>{formatCurrency(selectedPoint.value)}</Text>
+            <Text style={styles.tooltipDate}>{formatDate(new Date(selectedPoint.date))}</Text>
+          </View>
+        )}
       </View>
 
       {/* Time Range Selector */}
@@ -248,14 +287,43 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: 12,
   },
-  amount: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
   positiveAmount: {
     color: '#4CAF50',
     fontSize: 16,
     fontWeight: '500',
+  },
+  selectedPoint: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(46, 196, 182, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedPointInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2EC4B6',
+  },
+  tooltip: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+    backgroundColor: 'rgba(10, 26, 47, 0.9)',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(46, 196, 182, 0.5)',
+  },
+  tooltipText: {
+    color: '#2EC4B6',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  tooltipDate: {
+    color: '#FFF',
+    fontSize: 12,
+    marginTop: 2,
   },
 });

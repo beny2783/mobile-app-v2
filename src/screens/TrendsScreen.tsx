@@ -14,6 +14,7 @@ import { useSpendingAnalysis } from '../hooks/useSpendingAnalysis';
 import { useBalanceAnalysis } from '../hooks/useBalanceAnalysis';
 import { SpendingView } from '../components/SpendingView';
 import { BalanceView } from '../components/BalanceView';
+import { TargetView } from '../components/TargetView';
 import { getTimeRange } from '../utils/balanceUtils';
 
 type TabType = 'Balance' | 'Spending' | 'Target';
@@ -100,11 +101,7 @@ export default function TrendsScreen() {
         />
       )}
       {activeTab === 'Spending' && <SpendingView data={spendingAnalysis} />}
-      {activeTab === 'Target' && (
-        <View style={styles.comingSoon}>
-          <Text style={styles.comingSoonText}>Coming soon</Text>
-        </View>
-      )}
+      {activeTab === 'Target' && <TargetView />}
     </ScrollView>
   );
 }
