@@ -11,7 +11,7 @@ import {
   TextInput,
   ScrollView,
 } from 'react-native';
-import { TrueLayerService } from '../services/trueLayer';
+import { getTrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
 import { colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,10 +39,7 @@ export default function TransactionsScreen() {
   const [categories, setCategories] = useState<string[]>([]);
   const challengeTracking = React.useMemo(() => new ChallengeTrackingService(), []);
 
-  const trueLayer = new TrueLayerService({
-    clientId: TRUELAYER.CLIENT_ID || '',
-    redirectUri: TRUELAYER.REDIRECT_URI || '',
-  });
+  const trueLayer = getTrueLayerService();
 
   // Add effect to clear transactions when no active connection exists
   useEffect(() => {

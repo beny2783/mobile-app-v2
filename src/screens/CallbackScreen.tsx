@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { TrueLayerService } from '../services/trueLayer';
+import { getTrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
 
 export default function CallbackScreen() {
@@ -52,10 +52,7 @@ export default function CallbackScreen() {
             timestamp: Date.now(),
           });
 
-          const trueLayer = new TrueLayerService({
-            clientId: TRUELAYER.CLIENT_ID,
-            redirectUri: TRUELAYER.REDIRECT_URI,
-          });
+          const trueLayer = getTrueLayerService();
 
           try {
             const result = await trueLayer.exchangeCode(code);

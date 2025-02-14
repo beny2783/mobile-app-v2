@@ -2,7 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { RootStackParamList } from './src/navigation/types';
 import AuthScreen from './src/screens/AuthScreen';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
@@ -16,7 +16,11 @@ function Navigation() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return null; // Or a loading spinner
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#87CEEB" />
+      </View>
+    );
   }
 
   return (
@@ -37,7 +41,14 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <NavigationContainer linking={linking}>
+      <NavigationContainer
+        linking={linking}
+        fallback={
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#87CEEB" />
+          </View>
+        }
+      >
         <View style={styles.container}>
           <StatusBar style="auto" />
           <Navigation />
@@ -53,5 +64,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     width: '100%',
     height: '100%',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
-import { TrueLayerService } from '../services/trueLayer';
+import { getTrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
 import * as WebBrowser from 'expo-web-browser';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -36,10 +36,7 @@ interface BankConnection {
 }
 
 // Create TrueLayer service instance outside component
-const trueLayer = new TrueLayerService({
-  clientId: TRUELAYER.CLIENT_ID || '',
-  redirectUri: TRUELAYER.REDIRECT_URI,
-});
+const trueLayer = getTrueLayerService();
 
 type ConnectBankScreenNavigationProp = NativeStackNavigationProp<AppTabParamList, 'ConnectBank'>;
 type ConnectBankScreenRouteProp = RouteProp<AppTabParamList, 'ConnectBank'>;

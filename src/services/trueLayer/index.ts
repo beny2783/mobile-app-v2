@@ -54,23 +54,29 @@ export class TrueLayerService {
   }
 
   private async initializeConnection(userId: string, connectionId: string): Promise<void> {
-    const token = await this.storageService.getStoredToken(userId);
-    if (!token) throw new Error('No valid token available');
+    try {
+      const token = await this.storageService.getStoredToken(userId);
+      if (!token) throw new Error('No valid token available');
 
-    // Fetch both initial transactions and balances
-    const [transactions, balances] = await Promise.all([
-      this.apiService.fetchTransactions(token),
-      this.apiService.fetchBalances(token),
-    ]);
+      // First fetch and store balances to ensure accounts are created
+      console.log('📊 Fetching initial balances...');
+      const balances = await this.apiService.fetchBalances(token);
+      await this.storageService.storeBalances(userId, connectionId, balances);
 
-    // Process and store the data
-    await Promise.all([
-      this.transactionService
-        .processTransactions(transactions)
-        .then((processedTransactions) =>
-          this.storageService.storeTransactions(userId, processedTransactions)
-        ),
-      this.storageService.storeBalances(userId, connectionId, balances),
-    ]);
+      // Then fetch and store transactions
+      console.log('💳 Fetching initial transactions...');
+      const transactions = await this.apiService.fetchTransactions(token);
+      const processedTransactions = await this.transactionService.processTransactions(transactions);
+
+      console.log(`📝 Storing ${processedTransactions.length} transactions...`);
+      await this.storageService.storeTransactions(userId, processedTransactions);
+
+      console.log('✅ Bank connection initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize bank connection:', error);
+      // Clean up the connection if initialization fails
+      await this.storageService.disconnectBank(connectionId);
+      throw error;
+    }
   }
 }
