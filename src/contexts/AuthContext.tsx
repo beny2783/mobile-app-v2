@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { authRepository } from '../repositories/auth';
-import { Platform } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
 
 interface AuthContextType {
   session: Session | null;
@@ -38,9 +36,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Subscribe to auth state changes
     console.log('[AuthContext] Setting up auth state change subscription');
-    const unsubscribe = authRepository.onAuthStateChange((newUser) => {
+    const unsubscribe = authRepository.onAuthStateChange(async (newUser) => {
       console.log('[AuthContext] Auth state changed, updating user:', newUser?.id ?? 'No user');
       setUser(newUser);
+      if (newUser) {
+        // If we have a user, get their session
+        const session = await authRepository.getSession();
+        setSession(session);
+      } else {
+        setSession(null);
+      }
       setLoading(false);
     });
 

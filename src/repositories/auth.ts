@@ -10,6 +10,7 @@ export interface AuthError extends Error {
 
 export interface AuthRepository {
   getSession(): Promise<Session | null>;
+  getUser(): Promise<User | null>;
   signIn(email: string, password: string): Promise<void>;
   signInWithGoogle(): Promise<void>;
   signOut(): Promise<void>;
@@ -27,6 +28,21 @@ class SupabaseAuthRepository implements AuthRepository {
       if (error) throw this.handleError(error);
       console.log('[AuthRepository] Session retrieved:', session ? 'Valid session' : 'No session');
       return session;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async getUser(): Promise<User | null> {
+    console.log('[AuthRepository] Getting current user...');
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+      if (error) throw this.handleError(error);
+      console.log('[AuthRepository] User retrieved:', user ? 'User found' : 'No user');
+      return user;
     } catch (error) {
       throw this.handleError(error);
     }
@@ -62,10 +78,11 @@ class SupabaseAuthRepository implements AuthRepository {
 
       console.log('[AuthRepository] Using redirect URL:', redirectUrl);
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
+          skipBrowserRedirect: true,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -74,10 +91,70 @@ class SupabaseAuthRepository implements AuthRepository {
       });
 
       if (error) throw this.handleError(error);
-      console.log('[AuthRepository] Google sign in flow completed successfully');
+
+      if (!data?.url) {
+        console.error('[AuthRepository] No OAuth URL received');
+        throw new Error('Failed to get authentication URL');
+      }
+
+      console.log('[AuthRepository] Opening auth session with URL:', data.url);
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl, {
+        showInRecents: true,
+        preferEphemeralSession: true,
+      });
+
+      console.log('[AuthRepository] Auth session result:', result.type);
+
+      if (result.type === 'success' && result.url) {
+        // Parse the URL and extract tokens
+        const url = new URL(result.url);
+        let params: URLSearchParams;
+
+        // Check both hash and search parameters
+        if (url.hash) {
+          params = new URLSearchParams(url.hash.substring(1));
+        } else {
+          params = url.searchParams;
+        }
+
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+
+        console.log('[AuthRepository] Tokens extracted:', {
+          hasAccessToken: !!access_token,
+          hasRefreshToken: !!refresh_token,
+        });
+
+        if (access_token) {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token,
+            refresh_token: refresh_token || '',
+          });
+
+          if (sessionError) {
+            console.error('[AuthRepository] Session error:', sessionError);
+            throw this.handleError(sessionError);
+          }
+
+          console.log('[AuthRepository] Google sign in flow completed successfully');
+        } else {
+          console.error('[AuthRepository] No access token found in response');
+          throw new Error('No access token received');
+        }
+      } else if (result.type === 'cancel') {
+        console.log('[AuthRepository] Auth session cancelled by user');
+        throw new Error('Authentication cancelled');
+      }
     } catch (error) {
-      console.error('[AuthRepository] Google sign in failed');
+      console.error('[AuthRepository] Google sign in failed:', error);
       throw this.handleError(error);
+    } finally {
+      try {
+        await WebBrowser.coolDownAsync();
+      } catch (error) {
+        console.error('[AuthRepository] Failed to cool down WebBrowser:', error);
+      }
     }
   }
 

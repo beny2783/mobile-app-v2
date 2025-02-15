@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { supabase } from '../services/supabase';
+import { authRepository } from '../repositories/auth';
 
 interface FetchState<T> {
   data: T;
@@ -75,13 +75,10 @@ export function useDataFetching<T>(
           setState((prev) => ({ ...prev, loading: true, error: null }));
         }
 
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+        const user = await authRepository.getUser();
 
-        if (userError || !user) {
-          console.error('❌ Authentication error:', userError);
+        if (!user) {
+          console.error('❌ Authentication error: No user found');
           throw new Error('Authentication required');
         }
 
