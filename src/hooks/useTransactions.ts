@@ -5,6 +5,7 @@ import { supabase } from '../services/supabase';
 import { useBankConnections } from './useBankConnections';
 import type { Transaction } from '../types';
 import type { BankConnection } from '../services/trueLayer/types';
+import { authRepository } from '../repositories/auth';
 
 interface DateRange {
   from: Date;
@@ -70,19 +71,50 @@ export function useTransactions(): UseTransactionsResult {
         from: dateRange.from.toISOString(),
         to: dateRange.to.toISOString(),
       },
+      activeConnections: connections.length,
     });
-    const result = await trueLayerService.fetchTransactions(dateRange.from, dateRange.to);
-    console.log('✅ useTransactions: Fetched transactions:', {
-      count: result.length,
+
+    // Get transactions from all active connections
+    const allTransactions = [];
+    for (const connection of connections) {
+      try {
+        console.log(`🏦 Fetching transactions for bank connection: ${connection.id}`);
+
+        // Fetch transactions for this connection
+        const connectionTransactions = await trueLayerService.fetchTransactionsForConnection(
+          connection.id,
+          dateRange.from,
+          dateRange.to
+        );
+
+        console.log(
+          `✅ Fetched ${connectionTransactions.length} transactions for connection ${connection.id}`
+        );
+        allTransactions.push(...connectionTransactions);
+      } catch (error) {
+        console.error(`❌ Failed to fetch transactions for connection ${connection.id}:`, error);
+        // Continue with other connections even if one fails
+      }
+    }
+
+    // Sort all transactions by date (newest first)
+    allTransactions.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+
+    console.log('✅ useTransactions: Fetched all transactions:', {
+      totalCount: allTransactions.length,
       dateRange: {
-        earliest: result.length
-          ? new Date(result[result.length - 1].timestamp).toISOString()
+        earliest: allTransactions.length
+          ? new Date(allTransactions[allTransactions.length - 1].timestamp).toISOString()
           : 'none',
-        latest: result.length ? new Date(result[0].timestamp).toISOString() : 'none',
+        latest: allTransactions.length
+          ? new Date(allTransactions[0].timestamp).toISOString()
+          : 'none',
       },
     });
-    return result;
-  }, [trueLayerService, dateRange]);
+    return allTransactions;
+  }, [trueLayerService, dateRange, connections]);
 
   const {
     data: transactions,
@@ -115,14 +147,7 @@ export function useTransactions(): UseTransactionsResult {
   const fetchCategories = useCallback(async () => {
     try {
       console.log('🔍 useTransactions: Fetching categories...');
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError) {
-        console.error('❌ useTransactions: Auth error fetching categories:', authError);
-        return;
-      }
+      const user = await authRepository.getUser();
 
       console.log('👤 useTransactions: User status:', {
         isAuthenticated: !!user,

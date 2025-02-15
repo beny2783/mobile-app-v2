@@ -9,13 +9,18 @@ import {
   TrueLayerError,
   TrueLayerErrorCode,
   BalanceResponse,
+  ITrueLayerStorageService,
 } from '../types';
 import { Transaction } from '../../../types';
+import { authRepository } from '../../../repositories/auth';
 
 export class TrueLayerApiService implements ITrueLayerApiService {
   private config: TrueLayerApiConfig;
 
-  constructor(config: TrueLayerConfig) {
+  constructor(
+    config: TrueLayerConfig,
+    private storageService: ITrueLayerStorageService
+  ) {
     console.log('📡 Initializing TrueLayerApiService');
     const isProd = !config.clientId.startsWith('sandbox-');
     this.config = {
@@ -92,6 +97,53 @@ export class TrueLayerApiService implements ITrueLayerApiService {
       throw new TrueLayerError(
         'Failed to exchange token',
         TrueLayerErrorCode.TOKEN_EXCHANGE_FAILED,
+        undefined,
+        error
+      );
+    }
+  }
+
+  async fetchTransactionsForConnection(
+    connectionId: string,
+    fromDate?: Date,
+    toDate?: Date
+  ): Promise<Transaction[]> {
+    try {
+      console.log(`🔄 Fetching transactions for connection ${connectionId}`);
+
+      // Get the stored token for this connection
+      const user = await authRepository.getUser();
+      if (!user) {
+        throw new TrueLayerError('No authenticated user found', TrueLayerErrorCode.UNAUTHORIZED);
+      }
+
+      const token = await this.storageService.getStoredToken(user.id, connectionId);
+      if (!token) {
+        throw new TrueLayerError(
+          'No token found for connection',
+          TrueLayerErrorCode.NO_ACTIVE_CONNECTION
+        );
+      }
+
+      // Fetch transactions using the token
+      const transactions = await this.fetchTransactions(token, fromDate, toDate);
+
+      // Add connection_id to each transaction
+      const transactionsWithConnection = transactions.map((t: Transaction) => ({
+        ...t,
+        connection_id: connectionId,
+      }));
+
+      console.log(
+        `✅ Fetched ${transactionsWithConnection.length} transactions for connection ${connectionId}`
+      );
+      return transactionsWithConnection;
+    } catch (error) {
+      console.error(`❌ Failed to fetch transactions for connection ${connectionId}:`, error);
+      if (error instanceof TrueLayerError) throw error;
+      throw new TrueLayerError(
+        'Failed to fetch transactions for connection',
+        TrueLayerErrorCode.FETCH_TRANSACTIONS_FAILED,
         undefined,
         error
       );

@@ -58,6 +58,11 @@ export interface ITrueLayerApiService {
   getAuthUrl(): string;
   exchangeToken(code: string): Promise<TokenResponse>;
   fetchTransactions(token: string, fromDate?: Date, toDate?: Date): Promise<Transaction[]>;
+  fetchTransactionsForConnection(
+    connectionId: string,
+    fromDate?: Date,
+    toDate?: Date
+  ): Promise<Transaction[]>;
   fetchBalances(token: string): Promise<BalanceResponse>;
   refreshToken(refreshToken: string): Promise<TokenResponse>;
 }
