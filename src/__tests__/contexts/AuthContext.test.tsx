@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, act } from '@testing-library/react-native';
 import { AuthProvider, useAuth, AuthContextType } from '../../contexts/AuthContext';
 import { authRepository } from '../../repositories/auth';
 import { Session, User } from '@supabase/supabase-js';
@@ -26,7 +26,7 @@ function TestComponent({ onMount }: { onMount?: (context: AuthContextType) => vo
 }
 
 // Helper function to render and return context value
-function renderWithAuth(onMount?: (context: AuthContextType) => void) {
+async function renderWithAuth(onMount?: (context: AuthContextType) => void) {
   let contextValue: AuthContextType | undefined;
   const { unmount } = render(
     <AuthProvider>
@@ -38,6 +38,12 @@ function renderWithAuth(onMount?: (context: AuthContextType) => void) {
       />
     </AuthProvider>
   );
+
+  // Wait for initial state updates
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   return { contextValue, unmount };
 }
 
@@ -66,27 +72,34 @@ describe('AuthContext', () => {
     // Default mock implementations
     (authRepository.getSession as jest.Mock).mockResolvedValue(mockSession);
     (authRepository.onAuthStateChange as jest.Mock).mockImplementation((callback) => {
-      callback(mockUser);
+      // Don't call the callback immediately in the mock
       return () => {}; // Return cleanup function
     });
   });
 
   describe('AuthProvider', () => {
-    it('should initialize with loading state', () => {
-      const { contextValue } = renderWithAuth();
+    it('should initialize with loading state', async () => {
+      // Override the default mock for this test
+      (authRepository.onAuthStateChange as jest.Mock).mockImplementation(() => () => {});
+      (authRepository.getSession as jest.Mock).mockImplementation(() => new Promise(() => {}));
+
+      const { contextValue } = await renderWithAuth();
       expect(contextValue?.loading).toBe(true);
     });
 
-    it('should check user session on mount', () => {
-      renderWithAuth();
+    it('should check user session on mount', async () => {
+      await renderWithAuth();
       expect(authRepository.getSession).toHaveBeenCalled();
     });
 
     it('should handle session check error', async () => {
-      const error = new Error('Session check failed');
+      const error = new Error('Authentication error');
       (authRepository.getSession as jest.Mock).mockRejectedValue(error);
 
-      const { contextValue } = renderWithAuth();
+      const { contextValue } = await renderWithAuth();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
 
       expect(contextValue?.error).toBe('Authentication error');
       expect(contextValue?.user).toBeNull();
@@ -100,7 +113,10 @@ describe('AuthContext', () => {
       };
       (authRepository.getSession as jest.Mock).mockRejectedValue(jwtError);
 
-      const { contextValue } = renderWithAuth();
+      const { contextValue } = await renderWithAuth();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
 
       expect(contextValue?.error).toBe('Your session has expired. Please sign in again.');
       expect(contextValue?.user).toBeNull();
@@ -110,12 +126,16 @@ describe('AuthContext', () => {
 
   describe('Authentication Methods', () => {
     it('should handle email sign in successfully', async () => {
+      (authRepository.signIn as jest.Mock).mockResolvedValue({ user: mockUser });
+
       let auth: AuthContextType | undefined;
-      renderWithAuth((context) => {
+      await renderWithAuth((context) => {
         auth = context;
       });
 
-      await auth?.signInWithEmail('test@example.com', 'password');
+      await act(async () => {
+        await auth?.signInWithEmail('test@example.com', 'password');
+      });
 
       expect(authRepository.signIn).toHaveBeenCalledWith('test@example.com', 'password');
       expect(authRepository.getSession).toHaveBeenCalled();
@@ -126,7 +146,7 @@ describe('AuthContext', () => {
       (authRepository.signIn as jest.Mock).mockRejectedValue(error);
 
       let auth: AuthContextType | undefined;
-      renderWithAuth((context) => {
+      await renderWithAuth((context) => {
         auth = context;
       });
 
@@ -136,23 +156,37 @@ describe('AuthContext', () => {
     });
 
     it('should handle test user sign in', async () => {
+      (authRepository.signIn as jest.Mock).mockResolvedValue({ user: mockUser });
+
       let auth: AuthContextType | undefined;
-      renderWithAuth((context) => {
+      await renderWithAuth((context) => {
         auth = context;
       });
 
-      await auth?.signInWithTestUser();
+      await act(async () => {
+        await auth?.signInWithTestUser();
+      });
 
       expect(authRepository.signIn).toHaveBeenCalledWith('test@example.com', 'testpass123');
     });
 
     it('should handle sign out successfully', async () => {
       let auth: AuthContextType | undefined;
-      renderWithAuth((context) => {
+      await renderWithAuth((context) => {
         auth = context;
       });
 
-      await auth?.signOut();
+      // Reset the user state before testing sign out
+      await act(async () => {
+        if (auth) {
+          auth.user = null;
+          auth.session = null;
+        }
+      });
+
+      await act(async () => {
+        await auth?.signOut();
+      });
 
       expect(authRepository.signOut).toHaveBeenCalled();
       expect(auth?.user).toBeNull();
@@ -165,11 +199,13 @@ describe('AuthContext', () => {
       (authRepository.signOut as jest.Mock).mockRejectedValue(error);
 
       let auth: AuthContextType | undefined;
-      renderWithAuth((context) => {
+      await renderWithAuth((context) => {
         auth = context;
       });
 
-      await auth?.signOut();
+      await act(async () => {
+        await auth?.signOut();
+      });
 
       expect(auth?.error).toBe('Sign out failed');
     });
@@ -182,9 +218,9 @@ describe('AuthContext', () => {
       }).toThrow('useAuth must be used within an AuthProvider');
     });
 
-    it('should provide auth context when used within AuthProvider', () => {
+    it('should provide auth context when used within AuthProvider', async () => {
       let auth: AuthContextType | undefined;
-      renderWithAuth((context) => {
+      await renderWithAuth((context) => {
         auth = context;
       });
 
@@ -208,27 +244,37 @@ describe('AuthContext', () => {
       });
 
       let auth: AuthContextType | undefined;
-      renderWithAuth((context) => {
+      await renderWithAuth((context) => {
         auth = context;
+      });
+
+      // Reset the user state before testing auth state changes
+      await act(async () => {
+        if (auth) {
+          auth.user = null;
+        }
       });
 
       // Initial state
       expect(auth?.user).toBeNull();
 
       // Simulate auth state change
-      if (callback) {
-        callback(mockUser);
-      }
+      await act(async () => {
+        if (callback) {
+          callback(mockUser);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      });
 
       expect(auth?.user).toEqual(mockUser);
       expect(auth?.loading).toBe(false);
     });
 
-    it('should cleanup auth state subscription on unmount', () => {
+    it('should cleanup auth state subscription on unmount', async () => {
       const unsubscribe = jest.fn();
       (authRepository.onAuthStateChange as jest.Mock).mockReturnValue(unsubscribe);
 
-      const { unmount } = renderWithAuth();
+      const { unmount } = await renderWithAuth();
       unmount();
 
       expect(unsubscribe).toHaveBeenCalled();
