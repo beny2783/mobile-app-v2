@@ -3,6 +3,7 @@ import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Text } from 'react-native-paper';
 import { colors } from '../constants/theme';
 import { supabase } from '../services/supabase';
+import { authRepository } from '../repositories/auth';
 
 interface Balance {
   id: string;
@@ -26,9 +27,7 @@ export default function TotalBalance() {
   useEffect(() => {
     const fetchBalances = async () => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        const user = await authRepository.getUser();
         if (!user) return;
 
         // Get all active connections

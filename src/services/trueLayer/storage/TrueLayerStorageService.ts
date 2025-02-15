@@ -242,6 +242,8 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
 
   async disconnectBank(connectionId: string): Promise<void> {
     try {
+      console.log('🔌 TrueLayerStorage: Disconnecting bank connection:', connectionId);
+
       const updates = [
         supabase
           .from('bank_connections')
@@ -253,12 +255,15 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
           })
           .eq('id', connectionId),
         supabase.from('bank_accounts').delete().eq('connection_id', connectionId),
+        supabase.from('balances').delete().eq('connection_id', connectionId),
       ];
 
+      console.log('🔌 TrueLayerStorage: Executing disconnect operations...');
       const results = await Promise.all(updates);
       const errors = results.filter((result) => result.error);
 
       if (errors.length > 0) {
+        console.error('❌ TrueLayerStorage: Disconnect failed:', errors[0].error);
         throw new TrueLayerError(
           'Failed to disconnect bank',
           TrueLayerErrorCode.STORAGE_FAILED,
@@ -266,7 +271,10 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
           errors[0].error
         );
       }
+
+      console.log('✅ TrueLayerStorage: Bank disconnected successfully');
     } catch (error) {
+      console.error('❌ TrueLayerStorage: Disconnect error:', error);
       if (error instanceof TrueLayerError) throw error;
       throw new TrueLayerError(
         'Failed to disconnect bank',

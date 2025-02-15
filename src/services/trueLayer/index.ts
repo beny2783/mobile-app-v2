@@ -7,9 +7,9 @@ import { supabase } from '../supabase';
 import { authRepository } from '../../repositories/auth';
 
 export class TrueLayerService {
-  private apiService: TrueLayerApiService;
-  private storageService: TrueLayerStorageService;
-  private transactionService: TrueLayerTransactionService;
+  protected apiService: TrueLayerApiService;
+  protected storageService: TrueLayerStorageService;
+  protected transactionService: TrueLayerTransactionService;
 
   constructor(config: TrueLayerConfig) {
     this.storageService = new TrueLayerStorageService();

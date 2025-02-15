@@ -103,8 +103,13 @@ export default function ConnectBankScreen() {
           try {
             await trueLayerService.exchangeCode(code);
             console.log('✅ Code exchange successful');
-            setStatus('connected');
+
+            // Ensure connections are refreshed before proceeding
+            console.log('🔄 Refreshing bank connections...');
             await refreshConnections();
+            console.log('✅ Bank connections refreshed');
+
+            setStatus('connected');
             navigation.navigate('Transactions');
           } catch (exchangeError) {
             console.error('❌ Code exchange failed:', exchangeError);

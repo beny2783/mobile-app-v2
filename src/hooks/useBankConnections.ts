@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useDataFetching } from './useDataFetching';
 import { supabase } from '../services/supabase';
 import { useServices } from '../contexts/ServiceContext';
+import { authRepository } from '../repositories/auth';
 import type { BankConnection } from '../services/trueLayer/types';
 
 interface BankConnectionWithAccounts extends BankConnection {
@@ -21,11 +22,8 @@ export function useBankConnections() {
     console.log('🎣 useBankConnections: Creating fetch function');
     return async () => {
       console.log('📊 Fetching bank connections...');
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('Authentication required');
+      const user = await authRepository.getUser();
+      if (!user) throw new Error('Authentication required');
 
       const { data: connections, error: dbError } = await supabase
         .from('bank_connections')
@@ -101,8 +99,6 @@ export function useBankConnections() {
     data: connections,
     loading,
     error,
-    refresh,
-    refreshing,
     fetch,
   } = useDataFetching<BankConnectionWithAccounts[]>([], fetchConnections, {
     transform: transformRef.current,
@@ -110,24 +106,41 @@ export function useBankConnections() {
     onError: handleError,
   });
 
+  const refresh = useCallback(async () => {
+    console.log('🔄 useBankConnections: Starting refresh...');
+    try {
+      await fetch();
+      console.log('✅ useBankConnections: Refresh completed successfully');
+    } catch (error: unknown) {
+      console.error('❌ useBankConnections: Refresh failed:', error);
+      throw error;
+    }
+  }, [fetch]);
+
   // Perform initial fetch on mount only
   useEffect(() => {
     console.log('🎣 useBankConnections: Running mount effect');
-    fetch();
+    void refresh().catch((error: unknown) => {
+      console.error('❌ useBankConnections: Initial fetch failed:', error);
+    });
     return () => {
       console.log('🎣 useBankConnections: Cleanup mount effect');
     };
-  }, []);
+  }, [refresh]);
 
   const disconnectBank = useCallback(
     async (connectionId: string) => {
-      console.log('🔌 Disconnecting bank:', connectionId);
+      console.log('🔌 useBankConnections: Disconnecting bank:', connectionId);
       try {
         await trueLayerService.disconnectBank(connectionId);
-        console.log('✅ Bank disconnected successfully');
-        refresh();
+        console.log('✅ useBankConnections: Bank disconnected successfully');
+
+        // Immediately refresh the connections list
+        console.log('🔄 useBankConnections: Refreshing connections after disconnect');
+        await refresh();
+        console.log('✅ useBankConnections: Refresh after disconnect completed');
       } catch (error) {
-        console.error('❌ Failed to disconnect bank:', error);
+        console.error('❌ useBankConnections: Failed to disconnect bank:', error);
         throw error;
       }
     },
@@ -138,7 +151,6 @@ export function useBankConnections() {
     connectionCount: connections.length,
     loading,
     error,
-    refreshing,
   });
 
   return {
@@ -146,7 +158,6 @@ export function useBankConnections() {
     loading,
     error,
     refresh,
-    refreshing,
     disconnectBank,
   };
 }
