@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../services/supabase';
+import { authRepository } from '../repositories/auth';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -19,203 +19,111 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
-  // Debug logging
+  // Debug logging for state changes
   useEffect(() => {
-    console.log('AuthProvider state:', { loading, user });
-  }, [loading, user]);
-
-  useEffect(() => {
-    // Use Supabase's onAuthStateChange instead of window listeners
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
+    console.log('[AuthContext] State updated:', {
+      loading,
+      isAuthenticated: !!user,
+      userId: user?.id,
+      sessionExists: !!session,
     });
+  }, [loading, user, session]);
 
+  useEffect(() => {
+    console.log('[AuthContext] Initializing auth provider...');
     // Initial session check
     checkUser();
 
+    // Subscribe to auth state changes
+    console.log('[AuthContext] Setting up auth state change subscription');
+    const unsubscribe = authRepository.onAuthStateChange((newUser) => {
+      console.log('[AuthContext] Auth state changed, updating user:', newUser?.id ?? 'No user');
+      setUser(newUser);
+      setLoading(false);
+    });
+
     return () => {
-      subscription.unsubscribe();
+      console.log('[AuthContext] Cleaning up auth provider...');
+      unsubscribe();
     };
   }, []);
 
   async function checkUser() {
+    console.log('[AuthContext] Checking current user session...');
     try {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-      if (error) throw error;
+      const session = await authRepository.getSession();
+      console.log(
+        '[AuthContext] Session check complete:',
+        session ? 'Session found' : 'No session'
+      );
+      setSession(session);
       setUser(session?.user ?? null);
     } catch (error) {
-      console.error('Error checking auth state:', error);
+      console.error('[AuthContext] Error checking session:', error);
     } finally {
+      console.log('[AuthContext] Finished initial session check');
       setLoading(false);
     }
   }
 
   const signIn = async (email: string, password: string) => {
+    console.log('[AuthContext] Attempting sign in...');
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) throw error;
+      await authRepository.signIn(email, password);
+      console.log('[AuthContext] Sign in successful');
     } catch (error) {
-      console.error('Error signing in:', error);
+      console.error('[AuthContext] Sign in failed:', error);
       throw error;
     }
   };
 
   // Development helper function
   const signInWithTestUser = async () => {
+    console.log('[AuthContext] Attempting test user sign in...');
     await signIn('test@example.com', 'testpass123');
   };
 
   const signInWithGoogle = async () => {
+    console.log('[AuthContext] Initiating Google sign in...');
     try {
-      console.log('Starting Google sign in flow...');
-
-      // Make sure WebBrowser is ready
-      try {
-        await WebBrowser.warmUpAsync();
-      } catch (error) {
-        console.error('Failed to warm up WebBrowser:', error);
-      }
-
-      // Set up the redirect URL based on environment
-      const redirectUrl = Platform.select({
-        web: __DEV__
-          ? 'http://127.0.0.1:54321/auth/v1/callback'
-          : 'https://cquppesxfqkkrppakopn.supabase.co/auth/v1/callback',
-        default: 'spendingtracker://auth/callback',
-      });
-
-      console.log('Using redirect URL:', redirectUrl);
-
-      // Start the OAuth flow
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-
-      if (error) {
-        console.error('OAuth initialization error:', error);
-        throw error;
-      }
-
-      if (!data?.url) {
-        console.error('No OAuth URL received');
-        throw new Error('Failed to get authentication URL');
-      }
-
-      console.log('Received OAuth URL:', data.url);
-
-      // Open the authentication URL in the browser
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl, {
-        showInRecents: true,
-        preferEphemeralSession: true,
-      });
-
-      console.log('Auth session result:', result);
-
-      if (result.type === 'success' && result.url) {
-        // Parse the URL and extract tokens
-        const url = new URL(result.url);
-        let params: URLSearchParams;
-
-        // Check both hash and search parameters
-        if (url.hash) {
-          params = new URLSearchParams(url.hash.substring(1));
-        } else {
-          params = url.searchParams;
-        }
-
-        const access_token = params.get('access_token');
-        const refresh_token = params.get('refresh_token');
-
-        console.log('Tokens extracted:', {
-          hasAccessToken: !!access_token,
-          hasRefreshToken: !!refresh_token,
-        });
-
-        if (access_token) {
-          const {
-            data: { session },
-            error: sessionError,
-          } = await supabase.auth.setSession({
-            access_token,
-            refresh_token: refresh_token || '',
-          });
-
-          if (sessionError) {
-            console.error('Session error:', sessionError);
-            throw sessionError;
-          }
-
-          console.log('Session established:', !!session);
-          return;
-        } else {
-          console.error('No access token found in response');
-          throw new Error('No access token received');
-        }
-      } else if (result.type === 'cancel') {
-        console.log('Auth session cancelled by user');
-        throw new Error('Authentication cancelled');
-      }
+      await authRepository.signInWithGoogle();
+      console.log('[AuthContext] Google sign in completed');
     } catch (error) {
-      console.error('Error signing in with Google:', error);
+      console.error('[AuthContext] Google sign in failed:', error);
       throw error;
-    } finally {
-      try {
-        await WebBrowser.coolDownAsync();
-      } catch (error) {
-        console.error('Failed to cool down WebBrowser:', error);
-      }
     }
   };
 
   const signOut = async () => {
+    console.log('[AuthContext] Initiating sign out...');
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await authRepository.signOut();
+      console.log('[AuthContext] Sign out completed');
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error('[AuthContext] Sign out failed:', error);
       throw error;
     }
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        session: null,
-        user,
-        loading,
-        signIn,
-        signOut,
-        signInWithGoogle,
-        signInWithTestUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const value = {
+    session,
+    user,
+    loading,
+    signIn,
+    signOut,
+    signInWithGoogle,
+    signInWithTestUser,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
+}
