@@ -91,17 +91,10 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
     try {
       console.log(`💾 Storing ${transactions.length} transactions for user ${userId}`);
 
-      const connection = await this.getActiveConnection(userId);
-      if (!connection) {
-        throw new TrueLayerError(
-          'No active connection found',
-          TrueLayerErrorCode.NO_ACTIVE_CONNECTION
-        );
-      }
-
+      // Map transactions to records, using their own connection_id
       const transactionRecords = transactions.map((transaction) => ({
         user_id: userId,
-        connection_id: connection.id,
+        connection_id: transaction.connection_id,
         transaction_id: transaction.transaction_id,
         account_id: transaction.account_id || 'default',
         timestamp: transaction.timestamp,
@@ -127,14 +120,22 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
         );
       }
 
-      // Update last_sync on the connection
-      const { error: updateError } = await supabase
-        .from('bank_connections')
-        .update({ last_sync: new Date().toISOString() })
-        .eq('id', connection.id);
+      // Get unique connection IDs from the transactions
+      const connectionIds = [...new Set(transactions.map((t) => t.connection_id))];
 
-      if (updateError) {
-        console.error('❌ Failed to update last_sync:', updateError);
+      // Update last_sync for each connection
+      for (const connectionId of connectionIds) {
+        const { error: updateError } = await supabase
+          .from('bank_connections')
+          .update({ last_sync: new Date().toISOString() })
+          .eq('id', connectionId);
+
+        if (updateError) {
+          console.error(
+            `❌ Failed to update last_sync for connection ${connectionId}:`,
+            updateError
+          );
+        }
       }
 
       console.log('✅ Successfully stored all transactions');

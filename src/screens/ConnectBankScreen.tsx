@@ -36,7 +36,6 @@ export default function ConnectBankScreen() {
     loading,
     error: connectionError,
     refresh: refreshConnections,
-    refreshing,
     disconnectBank,
   } = useBankConnections();
 
@@ -47,9 +46,8 @@ export default function ConnectBankScreen() {
       status,
       error: connectionError,
       loading,
-      refreshing,
     });
-  }, [connections, status, connectionError, loading, refreshing]);
+  }, [connections, status, connectionError, loading]);
 
   useEffect(() => {
     console.log('📝 Route params changed:', route.params);
@@ -110,7 +108,9 @@ export default function ConnectBankScreen() {
             console.log('✅ Bank connections refreshed');
 
             setStatus('connected');
-            navigation.navigate('Transactions');
+
+            // Navigate to Transactions screen with refresh parameter
+            navigation.navigate('Transactions', { refresh: true });
           } catch (exchangeError) {
             console.error('❌ Code exchange failed:', exchangeError);
             setError('Failed to complete bank connection');

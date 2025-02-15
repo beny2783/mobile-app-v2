@@ -149,7 +149,7 @@ export function useTransactions(): UseTransactionsResult {
   useEffect(() => {
     console.log('🎣 useTransactions: Running initial transaction fetch');
     fetch();
-  }, [fetch]);
+  }, [fetch, connections]);
 
   // Fetch categories
   const fetchCategories = useCallback(async () => {

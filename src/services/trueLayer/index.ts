@@ -92,7 +92,17 @@ export class TrueLayerService {
       // Then fetch and store transactions
       console.log('💳 Fetching initial transactions...');
       const transactions = await this.apiService.fetchTransactions(token);
-      const processedTransactions = await this.transactionService.processTransactions(transactions);
+
+      // Add connection_id to transactions and make transaction_id unique
+      const transactionsWithConnection = transactions.map((t) => ({
+        ...t,
+        connection_id: connectionId,
+        transaction_id: `${connectionId}_${t.transaction_id}`,
+      }));
+
+      const processedTransactions = await this.transactionService.processTransactions(
+        transactionsWithConnection
+      );
 
       console.log(`📝 Storing ${processedTransactions.length} transactions...`);
       await this.storageService.storeTransactions(userId, processedTransactions);
@@ -131,10 +141,11 @@ export class TrueLayerService {
       // Fetch transactions using the token
       const transactions = await this.apiService.fetchTransactions(token, fromDate, toDate);
 
-      // Add connection_id to each transaction
+      // Add connection_id to each transaction and make transaction_id unique
       const transactionsWithConnection = transactions.map((t: Transaction) => ({
         ...t,
         connection_id: connectionId,
+        transaction_id: `${connectionId}_${t.transaction_id}`,
       }));
 
       console.log(

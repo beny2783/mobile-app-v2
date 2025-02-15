@@ -94,9 +94,16 @@ export class SupabaseTransactionRepository implements TransactionRepository {
     try {
       console.log('[TransactionRepository] Fetching transactions with filters:', filters);
 
+      // Get current user
+      const user = await authRepository.getUser();
+      if (!user) {
+        throw this.handleError(new Error('No authenticated user found'));
+      }
+
       let query = supabase
         .from('transactions')
         .select('*')
+        .eq('user_id', user.id) // Filter by user_id
         .order('timestamp', { ascending: false });
 
       // Apply filters

@@ -549,3 +549,19 @@
   - [ ] Implement robust state management solution
   - [ ] Separate local and global state
   - [ ] Add state persistence where needed
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Known Issues
+
+- **Transactions Display**: After connecting a bank (first or subsequent), transactions may not appear immediately in the Transactions screen. A manual refresh is required to see the newly added bank's transactions.
+  - **Impact**: Users need to manually pull-to-refresh the Transactions screen after connecting a bank to see their transactions.
+  - **Workaround**: Pull down to refresh the Transactions screen after connecting a bank.
+  - **Technical Details**: The issue appears to be related to the timing of transaction fetching and storage, and how the Transactions screen handles updates to the bank connections list.

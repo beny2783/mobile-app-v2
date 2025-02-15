@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import { Transaction } from '../types';
 import { useTransactions } from '../hooks/useTransactions';
 import { useBankConnections } from '../hooks/useBankConnections';
 import { Ionicons } from '@expo/vector-icons';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import type { AppTabParamList } from '../types/navigation';
 
 interface TransactionSection {
   title: string;
@@ -34,6 +36,7 @@ const getBankColor = (bankId: string) => {
 
 export default function TransactionsScreen() {
   console.log('🏦 Rendering TransactionsScreen');
+  const route = useRoute<RouteProp<AppTabParamList, 'Transactions'>>();
 
   const {
     loading,
@@ -53,6 +56,14 @@ export default function TransactionsScreen() {
     bankConnections,
     transactions: filteredTransactions,
   } = useTransactions();
+
+  // Handle refresh parameter from navigation
+  useEffect(() => {
+    if (route.params?.refresh) {
+      console.log('🔄 Refreshing transactions from navigation param');
+      refresh();
+    }
+  }, [route.params?.refresh, refresh]);
 
   const setDateFilter = (days: number) => {
     console.log('📅 Setting date filter:', { days });
