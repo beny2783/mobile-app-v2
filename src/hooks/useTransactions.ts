@@ -6,10 +6,16 @@ import { useBankConnections } from './useBankConnections';
 import type { Transaction } from '../types';
 import type { BankConnection } from '../services/trueLayer/types';
 import { authRepository } from '../repositories/auth';
+import { createTransactionRepository } from '../repositories/transaction';
 
 interface DateRange {
   from: Date;
   to: Date;
+}
+
+interface MerchantCategory {
+  category: string;
+  merchant_pattern: string;
 }
 
 interface UseTransactionsResult {
@@ -49,6 +55,13 @@ export function useTransactions(): UseTransactionsResult {
   const [selectedBank, setSelectedBank] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
+  const [merchantCategories, setMerchantCategories] = useState<MerchantCategory[]>([]);
+
+  // Create repository instance
+  const repository = useMemo(
+    () => createTransactionRepository(trueLayerService),
+    [trueLayerService]
+  );
 
   // Log state changes
   useEffect(() => {
@@ -74,26 +87,21 @@ export function useTransactions(): UseTransactionsResult {
       activeConnections: connections.length,
     });
 
-    // Get transactions from all active connections
     const allTransactions = [];
     for (const connection of connections) {
       try {
         console.log(`🏦 Fetching transactions for bank connection: ${connection.id}`);
-
-        // Fetch transactions for this connection
-        const connectionTransactions = await trueLayerService.fetchTransactionsForConnection(
-          connection.id,
-          dateRange.from,
-          dateRange.to
-        );
-
+        const connectionTransactions = await repository.getTransactions({
+          connectionId: connection.id,
+          fromDate: dateRange.from,
+          toDate: dateRange.to,
+        });
         console.log(
           `✅ Fetched ${connectionTransactions.length} transactions for connection ${connection.id}`
         );
         allTransactions.push(...connectionTransactions);
       } catch (error) {
         console.error(`❌ Failed to fetch transactions for connection ${connection.id}:`, error);
-        // Continue with other connections even if one fails
       }
     }
 
@@ -114,7 +122,7 @@ export function useTransactions(): UseTransactionsResult {
       },
     });
     return allTransactions;
-  }, [trueLayerService, dateRange, connections]);
+  }, [repository, dateRange, connections]);
 
   const {
     data: transactions,
@@ -147,104 +155,42 @@ export function useTransactions(): UseTransactionsResult {
   const fetchCategories = useCallback(async () => {
     try {
       console.log('🔍 useTransactions: Fetching categories...');
-      const user = await authRepository.getUser();
-
-      console.log('👤 useTransactions: User status:', {
-        isAuthenticated: !!user,
-        userId: user?.id,
-      });
-
-      // Query for both system categories and user categories if user exists
-      let query = supabase.from('merchant_categories').select('category');
-
-      if (user) {
-        console.log(
-          '🔍 useTransactions: Querying for system and user categories with user:',
-          user.id
-        );
-        query = query.or(`user_id.is.null,user_id.eq.${user.id}`);
-      } else {
-        console.log('🔍 useTransactions: Querying only system categories');
-        query = query.is('user_id', null);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('❌ useTransactions: Failed to fetch categories:', error);
-        return;
-      }
-
-      console.log('📊 useTransactions: Raw category data:', data);
-
-      if (!data || data.length === 0) {
-        console.log('⚠️ useTransactions: No categories found. Inserting defaults...');
-
-        // Only proceed if we have a user
-        if (!user) {
-          console.log('❌ useTransactions: Cannot insert default categories without a user');
-          return;
-        }
-
-        const defaultCategories = [
-          {
-            merchant_pattern:
-              'DIRECT DEBIT|BILL PAYMENT|COUNCIL TAX|VODAFONE|EE|VIRGIN|BRITISH GAS|WATER',
-            category: 'Bills',
-          },
-          { merchant_pattern: 'UBER|TRAINLINE|TFL|SHELL|BP|ESSO', category: 'Transport' },
-          { merchant_pattern: 'AMAZON|PAYPAL|EBAY|ASOS', category: 'Shopping' },
-          {
-            merchant_pattern: 'TESCO|SAINSBURY|ASDA|WAITROSE|LIDL|ALDI|M&S',
-            category: 'Groceries',
-          },
-          {
-            merchant_pattern: 'DELIVEROO|JUST EAT|UBER EATS|COSTA|STARBUCKS|PRET|MCDONALDS',
-            category: 'Food & Drink',
-          },
-          {
-            merchant_pattern: 'SPOTIFY|NETFLIX|APPLE.COM/BILL|DISNEY PLUS|PRIME VIDEO|CINEMA',
-            category: 'Entertainment',
-          },
-          { merchant_pattern: 'PHARMACY|GYM|FITNESS|PURE GYM', category: 'Health' },
-        ];
-
-        // Insert categories as user-specific categories
-        const { data: insertedData, error: insertError } = await supabase
-          .from('merchant_categories')
-          .insert(
-            defaultCategories.map((cat) => ({
-              ...cat,
-              user_id: user.id, // Set user_id to the current user's ID
-            }))
-          )
-          .select('category');
-
-        if (insertError) {
-          console.error('❌ useTransactions: Failed to insert default categories:', insertError);
-          return;
-        }
-
-        console.log('✅ useTransactions: Successfully inserted default categories:', insertedData);
-
-        // Use the inserted categories
-        if (insertedData) {
-          const uniqueCategories = Array.from(new Set(insertedData.map((c) => c.category))).sort();
-          setCategories(uniqueCategories);
-          return;
-        }
-      }
-
-      const uniqueCategories = Array.from(new Set(data.map((c) => c.category))).sort();
+      const fetchedCategories = await repository.getCategories();
       console.log('🏷️ useTransactions: Found categories:', {
-        count: uniqueCategories.length,
-        categories: uniqueCategories,
+        count: fetchedCategories.length,
+        categories: fetchedCategories,
       });
-      setCategories(uniqueCategories);
+      setCategories(fetchedCategories);
     } catch (err) {
       console.error('💥 useTransactions: Error fetching categories:', err);
     }
-  }, []);
+  }, [repository]);
+
+  // Function to determine category based on merchant patterns
+  const getCategoryForTransaction = useCallback(
+    (transaction: Transaction): string => {
+      const description = (transaction.description || '').toUpperCase();
+      const merchantName = (transaction.merchant_name || '').toUpperCase();
+
+      // Try to match against merchant patterns
+      for (const { category, merchant_pattern } of merchantCategories) {
+        const patterns = merchant_pattern.split('|');
+        if (
+          patterns.some(
+            (pattern) =>
+              description.includes(pattern.toUpperCase()) ||
+              merchantName.includes(pattern.toUpperCase())
+          )
+        ) {
+          return category;
+        }
+      }
+
+      // If no match found, return the transaction type as fallback
+      return transaction.transaction_type || 'Other';
+    },
+    [merchantCategories]
+  );
 
   // Call fetchCategories on mount
   useEffect(() => {
@@ -271,7 +217,6 @@ export function useTransactions(): UseTransactionsResult {
         (t.merchant_name?.toLowerCase() || '').includes(searchQuery.toLowerCase());
 
       const matchesCategory = !selectedCategory || t.transaction_category === selectedCategory;
-
       const matchesBank = !selectedBank || t.connection_id === selectedBank;
 
       return matchesSearch && matchesCategory && matchesBank;
