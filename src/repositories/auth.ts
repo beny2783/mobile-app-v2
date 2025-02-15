@@ -188,14 +188,19 @@ class SupabaseAuthRepository implements AuthRepository {
   }
 
   private handleError(error: any): AuthError {
-    console.error('[AuthRepository] Error details:', {
-      message: error.message,
-      status: error.status,
-      code: error.code,
-    });
-    const authError = new Error(error.message || 'Authentication error') as AuthError;
+    console.error('[AuthRepository] Error details:', error);
+    const authError = new Error(error.message || 'Authentication failed') as AuthError;
     authError.status = error.status;
     authError.code = error.code;
+
+    // If the error is due to an invalid token, sign out the user
+    if (error.code === 'user_not_found' && error.message.includes('JWT')) {
+      console.log('[AuthRepository] Invalid token detected, signing out...');
+      this.signOut().catch((err) => {
+        console.error('[AuthRepository] Error during auto sign-out:', err);
+      });
+    }
+
     return authError;
   }
 }

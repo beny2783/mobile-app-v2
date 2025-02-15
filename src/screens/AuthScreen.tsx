@@ -1,41 +1,53 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { colors } from '../constants/theme';
 
 export default function AuthScreen() {
-  const { signInWithGoogle, signInWithTestUser } = useAuth();
+  const { signIn, signInWithTestUser, error } = useAuth();
+  const [loading, setLoading] = useState(false);
 
-  const handleSignIn = async () => {
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
     try {
-      console.log('Starting Google sign in...');
-      await signInWithGoogle();
+      await signIn();
     } catch (error) {
-      console.error('Sign in error:', error);
+      console.error('Google sign in error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleTestSignIn = async () => {
+    setLoading(true);
     try {
-      console.log('Starting test user sign in...');
       await signInWithTestUser();
     } catch (error) {
       console.error('Test sign in error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome to Spending Tracker</Text>
-      <TouchableOpacity style={styles.button} onPress={handleSignIn} activeOpacity={0.8}>
+
+      {error && <Text style={styles.error}>{error}</Text>}
+
+      <TouchableOpacity
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={handleGoogleSignIn}
+        disabled={loading}
+      >
         <Text style={styles.buttonText}>Sign in with Google</Text>
       </TouchableOpacity>
 
       {__DEV__ && (
         <TouchableOpacity
-          style={[styles.button, styles.testButton]}
+          style={[styles.button, styles.testButton, loading && styles.buttonDisabled]}
           onPress={handleTestSignIn}
-          activeOpacity={0.8}
+          disabled={loading}
         >
           <Text style={styles.buttonText}>Sign in as Test User</Text>
         </TouchableOpacity>
@@ -50,30 +62,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   title: {
     fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 40,
-    textAlign: 'center',
+    fontWeight: 'bold',
+    marginBottom: 30,
+    color: colors.text.primary,
   },
   button: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    padding: 15,
     borderRadius: 8,
     width: '100%',
-    maxWidth: 300,
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 10,
   },
   testButton: {
     backgroundColor: colors.secondary,
+    marginTop: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   buttonText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
+  },
+  error: {
+    color: colors.error,
+    marginBottom: 20,
     textAlign: 'center',
   },
 });

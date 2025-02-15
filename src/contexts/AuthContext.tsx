@@ -2,15 +2,16 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { authRepository } from '../repositories/auth';
 
-interface AuthContextType {
-  session: Session | null;
+export type AuthContextType = {
   user: User | null;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  session: Session | null;
+  error: string | null;
+  signIn: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
   signInWithTestUser: () => Promise<void>;
-}
+  signOut: () => Promise<void>;
+  loading: boolean;
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -18,6 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Debug logging for state changes
   useEffect(() => {
@@ -59,35 +61,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('[AuthContext] Checking current user session...');
     try {
       const session = await authRepository.getSession();
-      console.log(
-        '[AuthContext] Session check complete:',
-        session ? 'Session found' : 'No session'
-      );
       setSession(session);
       setUser(session?.user ?? null);
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error('[AuthContext] Error checking session:', error);
-    } finally {
-      console.log('[AuthContext] Finished initial session check');
-      setLoading(false);
+      // If the token is invalid, clear the session and user state
+      if (error.code === 'user_not_found' && error.message.includes('JWT')) {
+        setSession(null);
+        setUser(null);
+        setError('Your session has expired. Please sign in again.');
+      } else {
+        setError(error.message || 'Authentication error');
+      }
     }
   }
 
-  const signIn = async (email: string, password: string) => {
-    console.log('[AuthContext] Attempting sign in...');
+  const signInWithEmail = async (email: string, password: string) => {
+    console.log('[AuthContext] Attempting email sign in...');
     try {
       await authRepository.signIn(email, password);
-      console.log('[AuthContext] Sign in successful');
-    } catch (error) {
-      console.error('[AuthContext] Sign in failed:', error);
+      await checkUser();
+    } catch (error: any) {
+      console.error('[AuthContext] Email sign in failed:', error);
       throw error;
     }
   };
 
-  // Development helper function
   const signInWithTestUser = async () => {
     console.log('[AuthContext] Attempting test user sign in...');
-    await signIn('test@example.com', 'testpass123');
+    try {
+      await signInWithEmail('test@example.com', 'testpass123');
+    } catch (error) {
+      console.error('[AuthContext] Test user sign in failed:', error);
+      throw error;
+    }
   };
 
   const signInWithGoogle = async () => {
@@ -112,14 +120,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const value = {
+  const value: AuthContextType = {
     session,
     user,
+    error,
     loading,
-    signIn,
-    signOut,
-    signInWithGoogle,
+    signIn: async () => {
+      try {
+        await authRepository.signInWithGoogle();
+        await checkUser();
+      } catch (error: any) {
+        setError(error.message || 'Sign in failed');
+      }
+    },
+    signInWithEmail,
     signInWithTestUser,
+    signOut: async () => {
+      try {
+        await authRepository.signOut();
+        setSession(null);
+        setUser(null);
+        setError(null);
+      } catch (error: any) {
+        setError(error.message || 'Sign out failed');
+      }
+    },
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

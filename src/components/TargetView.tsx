@@ -1,51 +1,35 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Dimensions,
+  ActivityIndicator,
+  Modal,
+  TextInput,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
 import { LineChart } from 'react-native-chart-kit';
 import Slider from '@react-native-community/slider';
+import { useTargets } from '../hooks/useTargets';
 
 const { width } = Dimensions.get('window');
 
-// Mock data
-const mockTargets = {
-  monthlySpendingLimit: 2000,
-  currentSpending: 1450,
-  savingsGoal: 500,
-  currentSavings: 350,
-  categoryTargets: [
-    { category: 'Groceries', limit: 400, current: 320, color: '#00BCD4', min: 200, max: 800 },
-    { category: 'Entertainment', limit: 200, current: 180, color: '#9C27B0', min: 100, max: 500 },
-    { category: 'Transport', limit: 150, current: 145, color: '#2196F3', min: 50, max: 300 },
-    { category: 'Shopping', limit: 300, current: 280, color: '#4CAF50', min: 100, max: 600 },
-  ],
-  trendData: {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    spending: [100, 220, 150, 280, 190, 250, 260],
-    target: [200, 200, 200, 200, 200, 200, 200],
-  },
-  achievements: [
-    { title: 'Under Budget', description: '3 weeks in a row', icon: 'trophy', color: '#FFD700' },
-    { title: 'Smart Saver', description: 'Saved £150 this week', icon: 'star', color: '#4CAF50' },
-    {
-      title: 'On Track',
-      description: 'All category targets met',
-      icon: 'checkmark-circle',
-      color: '#2196F3',
-    },
-  ],
-};
-
-interface CategoryTarget {
-  category: string;
-  limit: number;
-  current: number;
-  color: string;
-  min: number;
-  max: number;
-}
-
 export const TargetView: React.FC = () => {
+  const {
+    targets,
+    categoryTargets,
+    targetSummary,
+    isLoading,
+    error,
+    updateTarget,
+    updateCategoryTarget,
+    createCategoryTarget,
+  } = useTargets();
+
   const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
   const [selectedPoint, setSelectedPoint] = useState<{
     value: number;
@@ -53,29 +37,85 @@ export const TargetView: React.FC = () => {
     date: string;
     index: number;
   } | null>(null);
-  const [categoryTargets, setCategoryTargets] = useState(mockTargets.categoryTargets);
   const [editingTarget, setEditingTarget] = useState<string | null>(null);
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+  const [newTarget, setNewTarget] = useState({
+    category: '',
+    target_limit: 200,
+    min_limit: 0,
+    max_limit: 1000,
+    color: '#4CAF50',
+  });
 
   const formatAmount = (amount: number) => `£${amount.toFixed(2)}`;
   const calculateProgress = (current: number, target: number) => (current / target) * 100;
 
   const handleDataPointClick = (value: number, index: number) => {
-    const target = mockTargets.trendData.target[index];
+    if (!targetSummary) return;
+
+    const target = targetSummary.trendData.target[index];
     setSelectedPoint({
       value,
       target,
-      date: mockTargets.trendData.labels[index],
+      date: targetSummary.trendData.labels[index],
       index,
     });
   };
 
-  const handleTargetChange = (category: string, newLimit: number): void => {
-    setCategoryTargets((prev) =>
-      prev.map((target) =>
-        target.category === category ? { ...target, limit: Math.round(newLimit) } : target
-      )
-    );
+  const handleTargetChange = async (category: string, newLimit: number): Promise<void> => {
+    try {
+      await updateCategoryTarget(category, { target_limit: Math.round(newLimit) });
+    } catch (err) {
+      console.error('Failed to update category target:', err);
+    }
   };
+
+  const handleCreateTarget = async () => {
+    try {
+      await createCategoryTarget({
+        category: newTarget.category,
+        target_limit: newTarget.target_limit,
+        min_limit: newTarget.min_limit,
+        max_limit: newTarget.max_limit,
+        color: newTarget.color,
+        current_amount: 0,
+      });
+      setIsCreateModalVisible(false);
+      setNewTarget({
+        category: '',
+        target_limit: 200,
+        min_limit: 0,
+        max_limit: 1000,
+        color: '#4CAF50',
+      });
+    } catch (err) {
+      console.error('Failed to create category target:', err);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Error: {error.message}</Text>
+      </View>
+    );
+  }
+
+  if (!targetSummary) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>No target data available</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -114,7 +154,7 @@ export const TargetView: React.FC = () => {
             <Text style={styles.progressAmount}>
               {selectedPoint
                 ? `${formatAmount(selectedPoint.value)} / ${formatAmount(selectedPoint.target)}`
-                : `${formatAmount(mockTargets.currentSpending)} / ${formatAmount(mockTargets.monthlySpendingLimit)}`}
+                : `${formatAmount(targetSummary.currentSpending)} / ${formatAmount(targetSummary.monthlySpendingLimit)}`}
             </Text>
           </View>
           <View style={styles.progressBarContainer}>
@@ -126,15 +166,15 @@ export const TargetView: React.FC = () => {
                     selectedPoint
                       ? calculateProgress(selectedPoint.value, selectedPoint.target)
                       : calculateProgress(
-                          mockTargets.currentSpending,
-                          mockTargets.monthlySpendingLimit
+                          targetSummary.currentSpending,
+                          targetSummary.monthlySpendingLimit
                         )
                   }%`,
                   backgroundColor: selectedPoint
                     ? selectedPoint.value > selectedPoint.target
                       ? '#F44336'
                       : '#4CAF50'
-                    : mockTargets.currentSpending > mockTargets.monthlySpendingLimit
+                    : targetSummary.currentSpending > targetSummary.monthlySpendingLimit
                       ? '#F44336'
                       : '#4CAF50',
                 },
@@ -146,7 +186,7 @@ export const TargetView: React.FC = () => {
               ? `${formatAmount(Math.abs(selectedPoint.target - selectedPoint.value))} ${
                   selectedPoint.value > selectedPoint.target ? 'over' : 'under'
                 } target`
-              : `${formatAmount(mockTargets.monthlySpendingLimit - mockTargets.currentSpending)} remaining`}
+              : `${formatAmount(targetSummary.monthlySpendingLimit - targetSummary.currentSpending)} remaining`}
           </Text>
         </View>
       </View>
@@ -157,15 +197,15 @@ export const TargetView: React.FC = () => {
         <View style={styles.chartWrapper}>
           <LineChart
             data={{
-              labels: mockTargets.trendData.labels,
+              labels: targetSummary.trendData.labels,
               datasets: [
                 {
-                  data: mockTargets.trendData.spending,
+                  data: targetSummary.trendData.spending,
                   color: (opacity = 1) => `rgba(46, 196, 182, ${opacity})`,
                   strokeWidth: 2,
                 },
                 {
-                  data: mockTargets.trendData.target,
+                  data: targetSummary.trendData.target,
                   color: (opacity = 1) => `rgba(244, 67, 54, ${opacity * 0.5})`,
                   strokeWidth: 1,
                   strokeDashArray: [5, 5],
@@ -205,7 +245,7 @@ export const TargetView: React.FC = () => {
                 {
                   left:
                     (width - 32) *
-                      (selectedPoint.index / (mockTargets.trendData.labels.length - 1)) -
+                      (selectedPoint.index / (targetSummary.trendData.labels.length - 1)) -
                     40,
                   backgroundColor:
                     selectedPoint.value > selectedPoint.target
@@ -224,9 +264,14 @@ export const TargetView: React.FC = () => {
 
       {/* Category Targets */}
       <View style={styles.categoryTargets}>
-        <Text style={styles.sectionTitle}>Category Targets</Text>
-        {categoryTargets.map((target, index) => (
-          <View key={index} style={styles.categoryCard}>
+        <View style={styles.categoryHeader}>
+          <Text style={styles.sectionTitle}>Category Targets</Text>
+          <TouchableOpacity style={styles.addButton} onPress={() => setIsCreateModalVisible(true)}>
+            <Ionicons name="add-circle-outline" size={24} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+        {categoryTargets.map((target) => (
+          <View key={target.id} style={styles.categoryCard}>
             <TouchableOpacity
               style={styles.categoryHeader}
               onPress={() =>
@@ -238,13 +283,14 @@ export const TargetView: React.FC = () => {
                 <View>
                   <Text style={styles.categoryTitle}>{target.category}</Text>
                   <Text style={styles.categorySubtext}>
-                    {calculateProgress(target.current, target.limit).toFixed(0)}% of limit used
+                    {calculateProgress(target.current_amount, target.target_limit).toFixed(0)}% of
+                    limit used
                   </Text>
                 </View>
               </View>
               <View style={styles.categoryAmountContainer}>
                 <Text style={styles.categoryAmount}>
-                  {formatAmount(target.current)} / {formatAmount(target.limit)}
+                  {formatAmount(target.current_amount)} / {formatAmount(target.target_limit)}
                 </Text>
                 <Ionicons
                   name={editingTarget === target.category ? 'chevron-up' : 'chevron-down'}
@@ -259,7 +305,7 @@ export const TargetView: React.FC = () => {
                 style={[
                   styles.progressBar,
                   {
-                    width: `${calculateProgress(target.current, target.limit)}%`,
+                    width: `${calculateProgress(target.current_amount, target.target_limit)}%`,
                     backgroundColor: target.color,
                   },
                 ]}
@@ -269,14 +315,14 @@ export const TargetView: React.FC = () => {
             {editingTarget === target.category && (
               <View style={styles.sliderContainer}>
                 <View style={styles.sliderLabels}>
-                  <Text style={styles.sliderLabel}>{formatAmount(target.min)}</Text>
-                  <Text style={styles.sliderLabel}>{formatAmount(target.max)}</Text>
+                  <Text style={styles.sliderLabel}>{formatAmount(target.min_limit)}</Text>
+                  <Text style={styles.sliderLabel}>{formatAmount(target.max_limit)}</Text>
                 </View>
                 <Slider
                   style={styles.slider}
-                  minimumValue={target.min}
-                  maximumValue={target.max}
-                  value={target.limit}
+                  minimumValue={target.min_limit}
+                  maximumValue={target.max_limit}
+                  value={target.target_limit}
                   onValueChange={(value) => handleTargetChange(target.category, value)}
                   minimumTrackTintColor={target.color}
                   maximumTrackTintColor="rgba(255, 255, 255, 0.1)"
@@ -284,7 +330,7 @@ export const TargetView: React.FC = () => {
                 />
                 <View style={styles.sliderHint}>
                   <Text style={styles.sliderHintText}>
-                    Drag to adjust target • {formatAmount(target.limit)}
+                    Drag to adjust target • {formatAmount(target.target_limit)}
                   </Text>
                 </View>
               </View>
@@ -294,22 +340,82 @@ export const TargetView: React.FC = () => {
       </View>
 
       {/* Achievements */}
-      <View style={styles.achievements}>
-        <Text style={styles.sectionTitle}>Recent Achievements</Text>
-        <View style={styles.achievementsList}>
-          {mockTargets.achievements.map((achievement, index) => (
-            <View key={index} style={styles.achievementCard}>
-              <View style={[styles.achievementIcon, { backgroundColor: `${achievement.color}33` }]}>
-                <Ionicons name={achievement.icon as any} size={24} color={achievement.color} />
+      {targetSummary.achievements && targetSummary.achievements.length > 0 && (
+        <View style={styles.achievements}>
+          <Text style={styles.sectionTitle}>Recent Achievements</Text>
+          <View style={styles.achievementsList}>
+            {targetSummary.achievements.map((achievement, index) => (
+              <View key={index} style={styles.achievementCard}>
+                <View
+                  style={[styles.achievementIcon, { backgroundColor: `${achievement.color}33` }]}
+                >
+                  <Ionicons name={achievement.icon as any} size={24} color={achievement.color} />
+                </View>
+                <View style={styles.achievementContent}>
+                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
+                  <Text style={styles.achievementDescription}>{achievement.description}</Text>
+                </View>
               </View>
-              <View style={styles.achievementContent}>
-                <Text style={styles.achievementTitle}>{achievement.title}</Text>
-                <Text style={styles.achievementDescription}>{achievement.description}</Text>
-              </View>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
-      </View>
+      )}
+
+      {/* Create Target Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isCreateModalVisible}
+        onRequestClose={() => setIsCreateModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Create New Target</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Category Name"
+              placeholderTextColor="#666"
+              value={newTarget.category}
+              onChangeText={(text) => setNewTarget({ ...newTarget, category: text })}
+            />
+            <View style={styles.sliderContainer}>
+              <View style={styles.sliderLabels}>
+                <Text style={styles.sliderLabel}>{formatAmount(newTarget.min_limit)}</Text>
+                <Text style={styles.sliderLabel}>{formatAmount(newTarget.max_limit)}</Text>
+              </View>
+              <Slider
+                style={styles.slider}
+                minimumValue={newTarget.min_limit}
+                maximumValue={newTarget.max_limit}
+                value={newTarget.target_limit}
+                onValueChange={(value) =>
+                  setNewTarget({ ...newTarget, target_limit: Math.round(value) })
+                }
+                minimumTrackTintColor={newTarget.color}
+                maximumTrackTintColor="rgba(255, 255, 255, 0.1)"
+                thumbTintColor={newTarget.color}
+              />
+              <Text style={styles.sliderHintText}>
+                Target Amount: {formatAmount(newTarget.target_limit)}
+              </Text>
+            </View>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setIsCreateModalVisible(false)}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.createButton]}
+                onPress={handleCreateTarget}
+              >
+                <Text style={styles.buttonText}>Create</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -411,8 +517,8 @@ const styles = StyleSheet.create({
   categoryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    alignItems: 'center',
+    marginBottom: 16,
   },
   categoryTitleContainer: {
     flexDirection: 'row',
@@ -536,5 +642,73 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  addButton: {
+    padding: 8,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  input: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+    color: '#FFF',
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  createButton: {
+    backgroundColor: colors.primary,
+  },
+  buttonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
