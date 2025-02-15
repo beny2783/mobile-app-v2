@@ -73,9 +73,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Set up the redirect URL based on environment
-      const redirectUrl = __DEV__
-        ? 'http://127.0.0.1:54321/auth/v1/callback'
-        : 'https://cquppesxfqkkrppakopn.supabase.co/auth/v1/callback';
+      const redirectUrl = Platform.select({
+        web: __DEV__
+          ? 'http://127.0.0.1:54321/auth/v1/callback'
+          : 'https://cquppesxfqkkrppakopn.supabase.co/auth/v1/callback',
+        default: 'spendingtracker://auth/callback',
+      });
 
       console.log('Using redirect URL:', redirectUrl);
 
