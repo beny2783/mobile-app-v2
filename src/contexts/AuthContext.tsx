@@ -11,6 +11,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithTestUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,8 +58,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error signing in:', error);
+      throw error;
+    }
+  };
+
+  // Development helper function
+  const signInWithTestUser = async () => {
+    await signIn('test@example.com', 'testpass123');
   };
 
   const signInWithGoogle = async () => {
@@ -183,7 +197,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session: null, user, loading, signIn, signOut, signInWithGoogle }}
+      value={{
+        session: null,
+        user,
+        loading,
+        signIn,
+        signOut,
+        signInWithGoogle,
+        signInWithTestUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

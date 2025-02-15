@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { colors } from '../constants/theme';
 
 export default function AuthScreen() {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, signInWithTestUser } = useAuth();
 
   const handleSignIn = async () => {
     try {
@@ -15,12 +15,31 @@ export default function AuthScreen() {
     }
   };
 
+  const handleTestSignIn = async () => {
+    try {
+      console.log('Starting test user sign in...');
+      await signInWithTestUser();
+    } catch (error) {
+      console.error('Test sign in error:', error);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome to Spending Tracker</Text>
       <TouchableOpacity style={styles.button} onPress={handleSignIn} activeOpacity={0.8}>
         <Text style={styles.buttonText}>Sign in with Google</Text>
       </TouchableOpacity>
+
+      {__DEV__ && (
+        <TouchableOpacity
+          style={[styles.button, styles.testButton]}
+          onPress={handleTestSignIn}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.buttonText}>Sign in as Test User</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -46,6 +65,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     width: '100%',
     maxWidth: 300,
+    marginBottom: 12,
+  },
+  testButton: {
+    backgroundColor: colors.secondary,
   },
   buttonText: {
     color: '#fff',
