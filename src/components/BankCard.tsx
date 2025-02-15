@@ -3,17 +3,7 @@ import { View, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Text, Card, IconButton } from 'react-native-paper';
 import { colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
-
-interface BankAccount {
-  id: string;
-  account_id: string;
-  account_type: string;
-  account_name: string;
-  currency: string;
-  last_updated: string;
-  current: number;
-  available: number;
-}
+import type { BankAccount } from '../repositories/balance';
 
 interface BankCardProps {
   bankName: string;
@@ -25,7 +15,7 @@ export default function BankCard({ bankName, accounts, onRefresh }: BankCardProp
   const [isExpanded, setIsExpanded] = useState(false);
   const [animation] = useState(new Animated.Value(0));
 
-  const totalBalance = accounts.reduce((sum, account) => sum + (account.current || 0), 0);
+  const totalBalance = accounts.reduce((sum, account) => sum + (account.balance || 0), 0);
   const currency = accounts[0]?.currency || 'GBP';
 
   const formatCurrency = (amount: number) => {
@@ -98,18 +88,10 @@ export default function BankCard({ bankName, accounts, onRefresh }: BankCardProp
                   <View style={styles.balanceContainer}>
                     <View style={styles.balanceItem}>
                       <Text variant="bodySmall" style={styles.balanceLabel}>
-                        Current Balance
+                        Balance
                       </Text>
                       <Text variant="titleMedium" style={styles.balance}>
-                        {formatCurrency(account.current || 0)}
-                      </Text>
-                    </View>
-                    <View style={styles.balanceItem}>
-                      <Text variant="bodySmall" style={styles.balanceLabel}>
-                        Available
-                      </Text>
-                      <Text variant="titleMedium" style={styles.balance}>
-                        {formatCurrency(account.available || 0)}
+                        {formatCurrency(account.balance || 0)}
                       </Text>
                     </View>
                   </View>
