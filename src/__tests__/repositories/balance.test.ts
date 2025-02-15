@@ -138,6 +138,175 @@ describe('SupabaseBalanceRepository', () => {
         );
       });
     });
+
+    describe('getGroupedBalances', () => {
+      it('should return grouped balances for active connections', async () => {
+        const mockConnections = [
+          {
+            id: 'conn-1',
+            user_id: mockUserId,
+            provider: 'mock-provider',
+            status: 'active',
+            disconnected_at: null,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+            bank_name: 'Test Bank',
+          },
+        ];
+
+        const mockAccounts = [
+          {
+            id: '1',
+            user_id: mockUserId,
+            connection_id: 'conn-1',
+            account_id: 'acc-1',
+            account_type: 'current',
+            account_name: 'Main Account',
+            currency: 'GBP',
+            balance: 1000,
+            last_updated: '2024-01-01T00:00:00Z',
+          },
+        ];
+
+        const mockBalances = [
+          {
+            id: '1',
+            user_id: mockUserId,
+            connection_id: 'conn-1',
+            account_id: 'acc-1',
+            current: 1000,
+            available: 900,
+            currency: 'GBP',
+          },
+        ];
+
+        const mockConnectionChain = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          is: jest.fn().mockResolvedValue({ data: mockConnections, error: null }),
+        };
+
+        const mockAccountChain = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn(() => {
+            return {
+              eq: jest.fn().mockResolvedValue({ data: mockAccounts, error: null }),
+            };
+          }),
+        };
+
+        const mockBalanceChain = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn(() => {
+            return {
+              eq: jest.fn().mockResolvedValue({ data: mockBalances, error: null }),
+            };
+          }),
+        };
+
+        (supabase.from as jest.Mock).mockImplementation((table) => {
+          switch (table) {
+            case 'bank_connections':
+              return mockConnectionChain;
+            case 'bank_accounts':
+              return mockAccountChain;
+            case 'balances':
+              return mockBalanceChain;
+            default:
+              return {};
+          }
+        });
+
+        const result = await repository.getGroupedBalances();
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual({
+          connection: {
+            id: 'conn-1',
+            provider: 'mock-provider',
+            status: 'active',
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+            bank_name: 'Test Bank',
+          },
+          accounts: [
+            {
+              ...mockAccounts[0],
+              balance: 1000,
+            },
+          ],
+        });
+      });
+
+      it('should handle no active connections', async () => {
+        const mockConnectionChain = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          is: jest.fn().mockResolvedValue({ data: [], error: null }),
+        };
+
+        (supabase.from as jest.Mock).mockReturnValue(mockConnectionChain);
+
+        const result = await repository.getGroupedBalances();
+
+        expect(result).toEqual([]);
+      });
+
+      it('should handle database errors when fetching connections', async () => {
+        const mockConnectionChain = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          is: jest.fn().mockResolvedValue({ data: null, error: new Error('Database error') }),
+        };
+
+        (supabase.from as jest.Mock).mockReturnValue(mockConnectionChain);
+
+        await expect(repository.getGroupedBalances()).rejects.toThrow('Database error');
+      });
+
+      it('should handle unauthorized access', async () => {
+        (authRepository.getUser as jest.Mock).mockResolvedValue(null);
+
+        await expect(repository.getGroupedBalances()).rejects.toThrow('No user found');
+      });
+    });
+
+    describe('error handling', () => {
+      it('should handle database errors in getBalances', async () => {
+        const mockChain = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockResolvedValue({ data: null, error: new Error('Database error') }),
+        };
+
+        (supabase.from as jest.Mock).mockReturnValue(mockChain);
+
+        await expect(repository.getBalances(mockUserId)).rejects.toThrow('Database error');
+      });
+
+      it('should handle database errors in storeBalances', async () => {
+        const mockChain = {
+          insert: jest.fn().mockResolvedValue({ error: new Error('Insert failed') }),
+        };
+
+        (supabase.from as jest.Mock).mockReturnValue(mockChain);
+
+        await expect(
+          repository.storeBalances(mockUserId, mockConnectionId, [
+            {
+              id: '1',
+              user_id: mockUserId,
+              connection_id: mockConnectionId,
+              account_id: 'acc-1',
+              current: 1000,
+              available: 900,
+              currency: 'GBP',
+              updated_at: '2024-01-01T00:00:00Z',
+              created_at: '2024-01-01T00:00:00Z',
+            },
+          ])
+        ).rejects.toThrow('Insert failed');
+      });
+    });
   });
 
   // Bank Account Operations
@@ -329,6 +498,73 @@ describe('SupabaseBalanceRepository', () => {
 
         // Restore Date
         dateSpy.mockRestore();
+      });
+
+      describe('getBalanceHistory with detailed scenarios', () => {
+        it('should handle multiple transactions on the same day', async () => {
+          const mockDate = new Date('2024-01-07T00:00:00Z');
+          const dateSpy = jest.spyOn(global, 'Date').mockImplementation((...args: any[]) => {
+            if (args.length === 0) return mockDate;
+            return new (Function.prototype.bind.apply(Date, [null, ...args]))();
+          });
+
+          const mockTransactions = [
+            { id: '1', user_id: mockUserId, amount: 100, timestamp: '2024-01-06T10:00:00Z' },
+            { id: '2', user_id: mockUserId, amount: -50, timestamp: '2024-01-06T15:00:00Z' },
+            { id: '3', user_id: mockUserId, amount: 200, timestamp: '2024-01-07T00:00:00Z' },
+          ];
+
+          const mockChain = {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            gte: jest.fn().mockReturnThis(),
+            order: jest.fn().mockResolvedValue({ data: mockTransactions, error: null }),
+          };
+
+          (supabase.from as jest.Mock).mockReturnValue(mockChain);
+
+          const result = await repository.getBalanceHistory(mockUserId, 7);
+
+          // Sort the result by date to ensure consistent order
+          const sortedResult = result.sort((a, b) => a.date.localeCompare(b.date));
+
+          expect(sortedResult).toEqual([
+            { date: '2024-01-06', balance: 50 }, // 100 - 50
+            { date: '2024-01-07', balance: 250 }, // Previous balance (50) + 200
+          ]);
+
+          dateSpy.mockRestore();
+        });
+
+        it('should handle database errors in balance history', async () => {
+          const mockChain = {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            gte: jest.fn().mockReturnThis(),
+            order: jest.fn().mockResolvedValue({ data: null, error: new Error('Database error') }),
+          };
+
+          (supabase.from as jest.Mock).mockReturnValue(mockChain);
+
+          await expect(repository.getBalanceHistory(mockUserId, 7)).rejects.toThrow(
+            'Database error'
+          );
+        });
+
+        it('should handle empty transaction history', async () => {
+          const mockChain = {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            gte: jest.fn().mockReturnThis(),
+            order: jest.fn().mockResolvedValue({ data: [], error: null }),
+          };
+
+          (supabase.from as jest.Mock).mockReturnValue(mockChain);
+
+          const result = await repository.getBalanceHistory(mockUserId, 7);
+
+          expect(result).toEqual([]);
+        });
       });
     });
   });
