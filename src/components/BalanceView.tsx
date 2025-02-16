@@ -48,12 +48,6 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
                 color: (opacity = 1) => `rgba(46, 196, 182, ${opacity})`,
                 strokeWidth: 2,
               },
-              {
-                data: data.chartData.estimated,
-                color: (opacity = 1) => `rgba(46, 196, 182, ${opacity * 0.5})`,
-                strokeWidth: 1,
-                strokeDashArray: [5, 5],
-              },
             ],
           }}
           width={width - 32}
@@ -73,7 +67,7 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
               borderRadius: 16,
             },
             propsForDots: {
-              r: selectedPoint ? '4' : '6',
+              r: '4',
               strokeWidth: '2',
               stroke: '#2EC4B6',
               fill: '#0A1A2F',
@@ -136,7 +130,7 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
               <Text style={styles.breakdownDate}>On {formatDate(timeRange.startDate)}</Text>
             </View>
           </View>
-          <Text style={styles.positiveAmount}>{formatCurrency(data.startingBalance)}</Text>
+          <Text style={styles.amount}>{formatCurrency(data.startingBalance)}</Text>
         </View>
 
         {/* Money In */}
@@ -158,7 +152,7 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
             </View>
             <Text style={styles.breakdownLabel}>Total money out</Text>
           </View>
-          <Text style={styles.amount}>{formatCurrency(data.moneyOut)}</Text>
+          <Text style={styles.negativeAmount}>{formatCurrency(data.moneyOut)}</Text>
         </View>
 
         {/* Upcoming */}
@@ -212,23 +206,35 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
-    color: colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 14,
   },
   chartWrapper: {
     marginBottom: 16,
+    position: 'relative',
   },
   chart: {
     marginVertical: 8,
     borderRadius: 16,
   },
-  chartLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
+  tooltip: {
+    position: 'absolute',
+    backgroundColor: '#FFF',
+    padding: 8,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  chartLabel: {
-    color: colors.text.secondary,
+  tooltipText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tooltipDate: {
+    color: 'rgba(0, 0, 0, 0.6)',
     fontSize: 12,
   },
   timeSelector: {
@@ -250,22 +256,20 @@ const styles = StyleSheet.create({
   timeButtonText: {
     color: '#FFF',
     fontSize: 14,
-    fontWeight: '500',
   },
   breakdownContainer: {
-    marginTop: 8,
+    gap: 16,
   },
   breakdownTitle: {
     color: '#FFF',
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   breakdownItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
   },
   breakdownLeft: {
     flexDirection: 'row',
@@ -273,57 +277,28 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   iconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   breakdownLabel: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 14,
   },
   breakdownDate: {
-    color: colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 12,
   },
   positiveAmount: {
     color: '#4CAF50',
     fontSize: 16,
-    fontWeight: '500',
-  },
-  selectedPoint: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(46, 196, 182, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedPointInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2EC4B6',
-  },
-  tooltip: {
-    position: 'absolute',
-    top: 0,
-    left: 16,
-    backgroundColor: 'rgba(10, 26, 47, 0.9)',
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(46, 196, 182, 0.5)',
-  },
-  tooltipText: {
-    color: '#2EC4B6',
-    fontSize: 16,
     fontWeight: '600',
   },
-  tooltipDate: {
-    color: '#FFF',
-    fontSize: 12,
-    marginTop: 2,
+  negativeAmount: {
+    color: '#F44336',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

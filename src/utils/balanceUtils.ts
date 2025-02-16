@@ -10,10 +10,13 @@ export interface BalanceData {
   };
   upcomingPayments: {
     total: number;
+    recurring: number;
+    scheduled: number;
     date: string;
   };
   estimatedBalance: {
     amount: number;
+    confidence: number;
     date: string;
   };
 }

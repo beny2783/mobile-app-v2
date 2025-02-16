@@ -9,16 +9,16 @@ export interface Profile extends User {
 }
 
 export interface Transaction {
-  transaction_id: string;
-  account_id: string;
+  id: string;
   connection_id: string;
-  timestamp: string;
-  description: string;
   amount: number;
   currency: string;
-  transaction_type: string;
-  transaction_category: string;
+  description: string;
   merchant_name?: string;
+  timestamp: string;
+  transaction_type?: string;
+  transaction_category?: string;
+  scheduled_date?: string; // Date string for scheduled future transactions
 }
 
 export type AppTabParamList = {
