@@ -49,6 +49,7 @@ export default function TrendsScreen() {
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const { transactions, loading, error, refreshing, refresh, bankConnections } = useTransactions();
+  const [spendingTimeRange, setSpendingTimeRange] = useState<'week' | 'month'>('month');
 
   // Fetch bank accounts
   React.useEffect(() => {
@@ -114,7 +115,7 @@ export default function TrendsScreen() {
     return isSelected;
   });
 
-  const spendingAnalysis = useSpendingAnalysis(filteredTransactions);
+  const spendingAnalysis = useSpendingAnalysis(filteredTransactions, spendingTimeRange);
   const balanceAnalysis = useBalanceAnalysis(
     filteredTransactions,
     timeRangeType,
@@ -262,7 +263,13 @@ export default function TrendsScreen() {
             onTimeRangeChange={setTimeRangeType}
           />
         )}
-        {activeTab === 'Spending' && <SpendingView data={spendingAnalysis} />}
+        {activeTab === 'Spending' && (
+          <SpendingView
+            data={spendingAnalysis}
+            timeRange={spendingTimeRange}
+            onTimeRangeChange={setSpendingTimeRange}
+          />
+        )}
         {activeTab === 'Target' && <TargetView />}
       </ScrollView>
       {renderAccountSelector()}

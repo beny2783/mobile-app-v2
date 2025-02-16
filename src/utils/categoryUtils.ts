@@ -35,6 +35,16 @@ export interface SpendingAnalysis {
     percentageChange: number;
     previousMonthTotal: number;
   };
+  transactionTypes: {
+    debit: {
+      total: number;
+      percentage: number;
+    };
+    credit: {
+      total: number;
+      percentage: number;
+    };
+  };
   categories: CategoryData[];
   insights: SpendingInsight[];
 }

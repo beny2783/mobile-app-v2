@@ -18,6 +18,8 @@ const { width } = Dimensions.get('window');
 
 interface SpendingViewProps {
   data: SpendingAnalysis;
+  timeRange: 'week' | 'month';
+  onTimeRangeChange: (range: 'week' | 'month') => void;
 }
 
 interface Transaction {
@@ -27,9 +29,12 @@ interface Transaction {
   merchant: string;
 }
 
-export const SpendingView: React.FC<SpendingViewProps> = ({ data }) => {
+export const SpendingView: React.FC<SpendingViewProps> = ({
+  data,
+  timeRange,
+  onTimeRangeChange,
+}) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<'week' | 'month'>('month');
   const [selectedPieSection, setSelectedPieSection] = useState<number | null>(null);
 
   // Animation values
@@ -101,7 +106,7 @@ export const SpendingView: React.FC<SpendingViewProps> = ({ data }) => {
       <View style={styles.timeSelector}>
         <TouchableOpacity
           style={[styles.timeButton, timeRange === 'week' && styles.activeTimeButton]}
-          onPress={() => setTimeRange('week')}
+          onPress={() => onTimeRangeChange('week')}
         >
           <Text
             style={[styles.timeButtonText, timeRange === 'week' && styles.activeTimeButtonText]}
@@ -111,7 +116,7 @@ export const SpendingView: React.FC<SpendingViewProps> = ({ data }) => {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.timeButton, timeRange === 'month' && styles.activeTimeButton]}
-          onPress={() => setTimeRange('month')}
+          onPress={() => onTimeRangeChange('month')}
         >
           <Text
             style={[styles.timeButtonText, timeRange === 'month' && styles.activeTimeButtonText]}
@@ -141,6 +146,41 @@ export const SpendingView: React.FC<SpendingViewProps> = ({ data }) => {
           </Text>
         </View>
       </View>
+
+      {/* Transaction Types */}
+      {data.transactionTypes && (
+        <View style={styles.transactionTypes}>
+          {/* Debit Transactions */}
+          <TouchableOpacity
+            style={[styles.transactionTypeItem, { backgroundColor: 'rgba(244, 67, 54, 0.1)' }]}
+          >
+            <View style={styles.transactionTypeLeft}>
+              <Text style={styles.transactionTypeName}>DEBIT</Text>
+              <Text style={styles.transactionTypePercentage}>
+                {data.transactionTypes.debit.percentage.toFixed(1)}% of total
+              </Text>
+            </View>
+            <Text style={styles.transactionTypeAmount}>
+              {formatAmount(data.transactionTypes.debit.total)}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Credit Transactions */}
+          <TouchableOpacity
+            style={[styles.transactionTypeItem, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}
+          >
+            <View style={styles.transactionTypeLeft}>
+              <Text style={styles.transactionTypeName}>CREDIT</Text>
+              <Text style={styles.transactionTypePercentage}>
+                {data.transactionTypes.credit.percentage.toFixed(1)}% of total
+              </Text>
+            </View>
+            <Text style={[styles.transactionTypeAmount, { color: '#4CAF50' }]}>
+              {formatAmount(data.transactionTypes.credit.total)}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Category Breakdown */}
       <View style={styles.chartWrapper}>
@@ -500,5 +540,34 @@ const styles = StyleSheet.create({
   insightDetails: {
     color: colors.text.secondary,
     fontSize: 12,
+  },
+  transactionTypes: {
+    paddingHorizontal: 16,
+    marginBottom: 24,
+    gap: 8,
+  },
+  transactionTypeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+  },
+  transactionTypeLeft: {
+    flex: 1,
+  },
+  transactionTypeName: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  transactionTypePercentage: {
+    color: colors.text.secondary,
+    fontSize: 12,
+  },
+  transactionTypeAmount: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
