@@ -16,6 +16,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { AppTabParamList } from '../types/navigation';
+import { NotificationTest } from '../components/NotificationTest';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -164,6 +165,8 @@ export default function ConnectBankScreen() {
         Connect multiple bank accounts to automatically track your spending and manage your finances
         across all your accounts.
       </Text>
+
+      <NotificationTest />
 
       {/* Connected Banks Section */}
       {connections.length > 0 && (

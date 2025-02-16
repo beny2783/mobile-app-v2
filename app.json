@@ -25,14 +25,25 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.yourcompany.spendingtracker",
-      "permissions": ["DETECT_SCREEN_CAPTURE"]
+      "permissions": ["DETECT_SCREEN_CAPTURE", "NOTIFICATIONS"]
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "webpack"
     },
-    "plugins": ["expo-secure-store"],
+    "plugins": ["expo-secure-store", "expo-notifications"],
     "newArchEnabled": true,
-    "scheme": "spendingtracker"
+    "scheme": "spendingtracker",
+    "notification": {
+      "color": "#ffffff",
+      "iosDisplayInForeground": true,
+      "androidMode": "default",
+      "androidCollapsedTitle": "New Notification"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "165a5b35-e949-40a5-b0b0-7bddb4cde57a"
+      }
+    }
   }
 }

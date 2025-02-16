@@ -4,14 +4,24 @@ import { Avatar, Button, Text, Card, IconButton } from 'react-native-paper';
 import { colors } from '../constants/theme';
 import AccountCard from '../components/AccountCard';
 import { useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
+import { NotificationTest } from '../components/NotificationTest';
+import { RootStackParamList, AppTabParamList } from '../navigation/types';
+
+type HomeScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<AppTabParamList>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigation = useNavigation();
+  const navigation = useNavigation<HomeScreenNavigationProp>();
 
   useEffect(() => {
     checkBankConnection();
@@ -113,11 +123,13 @@ export default function HomeScreen() {
         </Text>
         <Button
           mode="contained"
-          onPress={() => navigation.navigate('ConnectBank')}
+          onPress={() => navigation.navigate('ConnectBank', {})}
           style={styles.button}
         >
           Connect Bank
         </Button>
+        <View style={styles.spacer} />
+        <NotificationTest />
       </View>
     );
   }
@@ -126,6 +138,7 @@ export default function HomeScreen() {
     <ScrollView style={styles.container}>
       {renderHeader()}
       {renderCreditScore()}
+      <NotificationTest />
 
       {accounts.map((account) => (
         <AccountCard
@@ -213,5 +226,8 @@ const styles = StyleSheet.create({
   button: {
     width: '100%',
     marginTop: 16,
+  },
+  spacer: {
+    height: 16,
   },
 });
