@@ -1,6 +1,18 @@
 export type RootStackParamList = {
-  Auth: undefined;
+  Auth: { error?: string };
+  AuthCallback: { type: string; url?: string };
   AppTabs: undefined;
+  ConnectBank: {
+    error?: string;
+    success?: boolean;
+  };
+  Home: {
+    error?: string;
+    success?: boolean;
+  };
+  Callback: {
+    url?: string;
+  };
 };
 
 export type AuthStackParamList = {
@@ -9,17 +21,29 @@ export type AuthStackParamList = {
 };
 
 export type AppTabParamList = {
-  Main: undefined;
-  ConnectBank: {
+  Home: {
     error?: string;
     success?: boolean;
   };
+  Balances: undefined;
+  Transactions: {
+    refresh?: boolean;
+  };
+  Trends: undefined;
+  Challenges: undefined;
   Profile: undefined;
-  Callback: undefined;
+  Callback: {
+    url?: string;
+  };
 };
 
 export type MainTabParamList = {
-  Home: undefined;
-  Transactions: undefined;
+  Home: {
+    error?: string;
+    success?: boolean;
+  };
+  Transactions: {
+    refresh?: boolean;
+  };
   Settings: undefined;
 };

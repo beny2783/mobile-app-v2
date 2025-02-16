@@ -1,12 +1,22 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { getTrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
+import { RootStackParamList } from '../navigation/types';
+
+type CallbackScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type CallbackScreenRouteProp = RouteProp<RootStackParamList, 'Callback'>;
+
+interface CallbackParams {
+  url?: string;
+}
 
 export default function CallbackScreen() {
-  const navigation = useNavigation();
-  const route = useRoute();
+  const navigation = useNavigation<CallbackScreenNavigationProp>();
+  const route = useRoute<CallbackScreenRouteProp>();
+  const params = route.params as CallbackParams;
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -15,11 +25,11 @@ export default function CallbackScreen() {
 
         // Log the raw route params
         console.log('📝 Route params:', {
-          params: route.params,
-          hasUrl: !!route.params?.url,
+          params,
+          hasUrl: !!params?.url,
         });
 
-        const urlString = route.params?.url;
+        const urlString = params?.url;
         if (!urlString) {
           console.error('❌ No URL in callback params');
           navigation.navigate('ConnectBank', { error: 'Missing callback URL' });
@@ -102,11 +112,11 @@ export default function CallbackScreen() {
     };
 
     handleCallback();
-  }, [navigation, route.params]);
+  }, [navigation, params]);
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" />
+      <ActivityIndicator size="large" testID="callback-loading-indicator" />
     </View>
   );
 }
