@@ -105,14 +105,7 @@ export default function TrendsScreen() {
   }, [bankAccounts]);
 
   const filteredTransactions = transactions.filter((t) => {
-    const isSelected = selectedAccounts.has(t.connection_id);
-    console.log(`🔍 Transaction check:`, {
-      connection_id: t.connection_id,
-      amount: t.amount,
-      isSelected,
-      selectedAccounts: Array.from(selectedAccounts),
-    });
-    return isSelected;
+    return selectedAccounts.has(t.connection_id);
   });
 
   const spendingAnalysis = useSpendingAnalysis(filteredTransactions, spendingTimeRange);
