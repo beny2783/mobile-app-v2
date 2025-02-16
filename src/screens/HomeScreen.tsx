@@ -1,166 +1,252 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, StyleSheet, View, ActivityIndicator } from 'react-native';
-import { Avatar, Button, Text, Card, IconButton } from 'react-native-paper';
+import {
+  View,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
-import AccountCard from '../components/AccountCard';
-import { useNavigation } from '@react-navigation/native';
-import { CompositeNavigationProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../services/supabase';
+import { useServices } from '../contexts/ServiceContext';
+import { useBankConnections } from '../hooks/useBankConnections';
+import * as WebBrowser from 'expo-web-browser';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
+import type { AppTabParamList } from '../types/navigation';
 import { NotificationTest } from '../components/NotificationTest';
-import { RootStackParamList, AppTabParamList } from '../navigation/types';
 
-type HomeScreenNavigationProp = CompositeNavigationProp<
-  BottomTabNavigationProp<AppTabParamList>,
-  NativeStackNavigationProp<RootStackParamList>
->;
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+type HomeScreenNavigationProp = NativeStackNavigationProp<AppTabParamList, 'Home'>;
+type HomeScreenRouteProp = RouteProp<AppTabParamList, 'Home'>;
 
 export default function HomeScreen() {
-  const { user } = useAuth();
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  console.log('🏦 Rendering HomeScreen');
+
   const navigation = useNavigation<HomeScreenNavigationProp>();
+  const route = useRoute<HomeScreenRouteProp>();
+  const { trueLayerService } = useServices();
+  const [status, setStatus] = useState<ConnectionStatus>('disconnected');
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    checkBankConnection();
-  }, []);
+  const {
+    connections,
+    loading,
+    error: connectionError,
+    refresh: refreshConnections,
+    disconnectBank,
+  } = useBankConnections();
 
+  // Log when connections change
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      // Refresh data when screen comes into focus
-      checkBankConnection();
+    console.log('🔄 Bank connections updated:', {
+      count: connections.length,
+      status,
+      error: connectionError,
+      loading,
     });
+  }, [connections, status, connectionError, loading]);
 
-    return unsubscribe;
-  }, [navigation]);
+  useEffect(() => {
+    console.log('📝 Route params changed:', route.params);
+    const init = async () => {
+      try {
+        // Check for success/error from callback first
+        if (route.params?.success) {
+          console.log('✅ Bank connection successful');
+          setStatus('connected');
+          await refreshConnections();
+          return;
+        }
 
-  const checkBankConnection = async () => {
+        if (route.params?.error) {
+          console.log('❌ Bank connection error:', route.params.error);
+          setError(route.params.error);
+          setStatus('error');
+          return;
+        }
+      } catch (error) {
+        console.error('❌ Failed to initialize:', error);
+        setError('Failed to check bank connection');
+        setStatus('error');
+      }
+    };
+
+    init();
+  }, [route.params, refreshConnections]);
+
+  const handleBankConnection = async () => {
+    console.log('🔄 Starting bank connection process...');
+    setError(null);
+    setStatus('connecting');
+
     try {
-      setLoading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const authUrl = trueLayerService.getAuthUrl();
+      console.log('🔗 Generated auth URL');
 
-      const { data: connections } = await supabase
-        .from('bank_connections')
-        .select('*')
-        .eq('user_id', user?.id)
-        .eq('status', 'active')
-        .is('disconnected_at', null)
-        .single();
+      const result = await WebBrowser.openAuthSessionAsync(
+        authUrl,
+        'spendingtracker://auth/callback'
+      );
+      console.log('📱 Browser session result:', result.type);
 
-      if (!connections) {
-        setAccounts([]);
-        return;
+      if (result.type === 'success') {
+        const url = result.url;
+        const code = new URL(url).searchParams.get('code');
+
+        if (code) {
+          console.log('🔑 Received auth code, exchanging...');
+          try {
+            await trueLayerService.exchangeCode(code);
+            console.log('✅ Code exchange successful');
+
+            // Ensure connections are refreshed before proceeding
+            console.log('🔄 Refreshing bank connections...');
+            await refreshConnections();
+            console.log('✅ Bank connections refreshed');
+
+            setStatus('connected');
+
+            // Navigate to Transactions screen with refresh parameter
+            navigation.navigate('Transactions', { refresh: true });
+          } catch (exchangeError) {
+            console.error('❌ Code exchange failed:', exchangeError);
+            setError('Failed to complete bank connection');
+            setStatus('error');
+          }
+        }
+      } else {
+        console.log('❌ Bank connection cancelled or failed');
+        setError('Bank connection cancelled or failed');
+        setStatus('error');
       }
 
-      // Get stored transactions
-      const { data: transactions } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user?.id);
-
-      setAccounts(transactions || []);
+      await WebBrowser.coolDownAsync();
     } catch (error) {
-      console.error('Failed to check bank connection:', error);
-      setAccounts([]);
-    } finally {
-      setLoading(false);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error connecting bank:', error);
+      setError(`Failed to connect to bank: ${errorMessage}`);
+      setStatus('error');
     }
   };
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <View style={styles.headerLeft}>
-        <Avatar.Text
-          size={40}
-          label={user?.email?.[0].toUpperCase() || 'U'}
-          style={styles.avatar}
-        />
-      </View>
-      <View style={styles.headerRight}>
-        <Button mode="contained" style={styles.upgradeButton} icon="star">
-          Upgrade
-        </Button>
-        <IconButton icon="gift-outline" />
-        <IconButton icon="magnify" />
-        <IconButton icon="plus" />
-      </View>
-    </View>
-  );
-
-  const renderCreditScore = () => (
-    <Card style={styles.creditScoreCard}>
-      <Card.Title
-        title="Check your credit score"
-        subtitle="Your monthly update is ready"
-        left={(props) => (
-          <Avatar.Icon {...props} icon="chart-line" style={styles.creditScoreIcon} />
-        )}
-      />
-    </Card>
-  );
+  const handleDisconnectBank = async (connectionId: string) => {
+    console.log('🔄 Disconnecting bank:', connectionId);
+    try {
+      setError(null);
+      await disconnectBank(connectionId);
+      console.log('✅ Bank disconnected successfully');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error disconnecting bank:', error);
+      setError(`Failed to disconnect bank: ${errorMessage}`);
+    }
+  };
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (accounts.length === 0) {
-    return (
-      <View style={styles.centerContainer}>
-        {renderHeader()}
-        <Text variant="headlineSmall" style={styles.title}>
-          Welcome!
-        </Text>
-        <Text variant="bodyLarge" style={styles.subtitle}>
-          Connect your bank account to get started
-        </Text>
-        <Button
-          mode="contained"
-          onPress={() => navigation.navigate('ConnectBank', {})}
-          style={styles.button}
-        >
-          Connect Bank
-        </Button>
-        <View style={styles.spacer} />
-        <NotificationTest />
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#87CEEB" />
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container}>
-      {renderHeader()}
-      {renderCreditScore()}
+      <View style={styles.header}>
+        <Ionicons name="wallet-outline" size={24} color="#87CEEB" />
+        <Text style={styles.title}>Connect Your Banks</Text>
+      </View>
+
+      <Text style={styles.description}>
+        Connect multiple bank accounts to automatically track your spending and manage your finances
+        across all your accounts.
+      </Text>
+
       <NotificationTest />
 
-      {accounts.map((account) => (
-        <AccountCard
-          key={account.account_id}
-          name={account.display_name}
-          balance={account.balance}
-          accountNumber={account.account_number?.number}
-          sortCode={account.account_number?.sort_code}
-          color={account.provider.logo_uri ? undefined : colors.primary}
-          logo={account.provider.logo_uri}
-          overdraftLimit={account.overdraft}
-        />
-      ))}
+      {/* Connected Banks Section */}
+      {connections.length > 0 && (
+        <View style={styles.connectionsContainer}>
+          <Text style={styles.sectionTitle}>Connected Banks ({connections.length})</Text>
+          {connections.map((connection) => (
+            <View key={connection.id} style={styles.connectionCard}>
+              <View style={styles.connectionHeader}>
+                <View style={styles.bankInfo}>
+                  <View style={styles.bankNameContainer}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor:
+                            connection.last_sync_status === 'success' ? '#4CAF50' : '#FFA726',
+                        },
+                      ]}
+                    />
+                    <Text style={styles.bankName}>
+                      {connection.bank_name ||
+                        `${connection.provider.charAt(0).toUpperCase()}${connection.provider.slice(1)} Bank ${connections.length > 1 ? connection.id.slice(-4) : ''}`}
+                    </Text>
+                  </View>
+                  <Text style={styles.connectionStatus}>
+                    {connection.last_sync_status === 'success'
+                      ? 'Connected'
+                      : 'Connection needs update'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.disconnectButton}
+                  onPress={() => handleDisconnectBank(connection.id)}
+                >
+                  <Text style={styles.disconnectButtonText}>Disconnect</Text>
+                </TouchableOpacity>
+              </View>
 
-      <Card style={styles.activityCard}>
-        <Card.Title title="Activity" />
-        <Card.Content>
-          <Text variant="bodyMedium" style={styles.noActivity}>
-            No recent activity
-          </Text>
-        </Card.Content>
-      </Card>
+              <View style={styles.connectionDetails}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Accounts Connected:</Text>
+                  <Text style={styles.detailValue}>
+                    {connection.account_count}{' '}
+                    {connection.account_count === 1 ? 'account' : 'accounts'}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Last Updated:</Text>
+                  <Text style={styles.detailValue}>
+                    {connection.last_sync
+                      ? new Date(connection.last_sync).toLocaleDateString()
+                      : 'Never'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Add New Bank Section */}
+      <Text style={styles.sectionTitle}>Add Another Bank</Text>
+      <View style={styles.addBankCard}>
+        <TouchableOpacity
+          style={styles.connectButton}
+          onPress={handleBankConnection}
+          disabled={status === 'connecting'}
+        >
+          <View style={styles.connectButtonContent}>
+            <Ionicons name="add-circle-outline" size={24} color="#FFFFFF" />
+            <Text style={styles.connectButtonText}>Connect Bank</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -168,66 +254,142 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#0A1A2F',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    backgroundColor: colors.primary,
-  },
-  upgradeButton: {
-    marginRight: 8,
-    backgroundColor: colors.surface,
-  },
-  creditScoreCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: colors.surface,
-  },
-  creditScoreIcon: {
-    backgroundColor: colors.primary,
-  },
-  activityCard: {
-    margin: 16,
-    backgroundColor: colors.surface,
-  },
-  noActivity: {
-    color: colors.text.secondary,
-    textAlign: 'center',
     padding: 20,
-  },
-  centerContainer: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: colors.background,
+    paddingBottom: 12,
   },
   title: {
-    color: colors.text.primary,
-    marginBottom: 8,
-    textAlign: 'center',
+    fontSize: 28,
+    fontWeight: '600',
+    marginLeft: 12,
+    color: '#FFFFFF',
   },
-  subtitle: {
-    color: colors.text.secondary,
-    textAlign: 'center',
+  description: {
+    fontSize: 16,
+    color: '#A0A7B5',
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    lineHeight: 24,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 16,
+    paddingHorizontal: 20,
+  },
+  connectionsContainer: {
     marginBottom: 24,
   },
-  button: {
-    width: '100%',
-    marginTop: 16,
+  connectionCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  spacer: {
-    height: 16,
+  connectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  bankInfo: {
+    flex: 1,
+  },
+  bankNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  bankName: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#0A1A2F',
+  },
+  connectionStatus: {
+    fontSize: 14,
+    color: '#666666',
+    marginLeft: 16,
+  },
+  connectionDetails: {
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    paddingTop: 12,
+    marginTop: 4,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  detailValue: {
+    fontSize: 14,
+    color: '#0A1A2F',
+    fontWeight: '500',
+  },
+  disconnectButton: {
+    backgroundColor: '#FF5252',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  disconnectButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  addBankCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    borderRadius: 16,
+    padding: 16,
+  },
+  connectButton: {
+    backgroundColor: '#87CEEB',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  connectButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  connectButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorContainer: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+    padding: 12,
+    backgroundColor: '#FFE5E5',
+    borderRadius: 8,
+  },
+  errorText: {
+    color: '#FF5252',
+    fontSize: 14,
   },
 });

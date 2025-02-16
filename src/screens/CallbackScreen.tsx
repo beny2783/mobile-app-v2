@@ -62,12 +62,12 @@ export default function CallbackScreen() {
               expiresIn: result?.expires_in,
             });
 
-            // Navigate back to ConnectBank screen with success
-            navigation.navigate('ConnectBank', { success: true });
+            // Navigate back to Home screen with success
+            navigation.navigate('Home', { success: true });
             return;
           } catch (exchangeError) {
             console.error('❌ Code exchange failed:', exchangeError);
-            navigation.navigate('ConnectBank', {
+            navigation.navigate('Home', {
               error:
                 exchangeError instanceof Error
                   ? exchangeError.message
@@ -84,15 +84,15 @@ export default function CallbackScreen() {
             error,
             description: url.searchParams.get('error_description'),
           });
-          navigation.navigate('ConnectBank', {
+          navigation.navigate('Home', {
             error: url.searchParams.get('error_description') || error,
           });
           return;
         }
 
-        // If no code or error, go back to connect screen
+        // If no code or error, go back to home screen
         console.log('⚠️ No code or error in callback');
-        navigation.navigate('ConnectBank');
+        navigation.navigate('Home');
       } catch (error) {
         console.error('💥 Failed to handle callback:', error);
         navigation.navigate('ConnectBank', {

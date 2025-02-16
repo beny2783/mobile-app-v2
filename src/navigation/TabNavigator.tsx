@@ -1,5 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import ConnectBankScreen from '../screens/ConnectBankScreen';
+import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
 import BalancesScreen from '../screens/BalancesScreen';
@@ -35,8 +35,8 @@ export function TabNavigator() {
       }}
     >
       <Tab.Screen
-        name="ConnectBank"
-        component={ConnectBankScreen}
+        name="Home"
+        component={HomeScreen}
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size }) => (

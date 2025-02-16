@@ -1,5 +1,5 @@
 export type AppTabParamList = {
-  ConnectBank:
+  Home:
     | {
         success?: boolean;
         error?: string;
