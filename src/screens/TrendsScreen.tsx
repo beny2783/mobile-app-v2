@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
@@ -16,24 +17,184 @@ import { SpendingView } from '../components/SpendingView';
 import { BalanceView } from '../components/BalanceView';
 import { TargetView } from '../components/TargetView';
 import { getTimeRange } from '../utils/balanceUtils';
+import { createBalanceRepository } from '../repositories/balance';
 
 type TabType = 'Balance' | 'Spending' | 'Target';
+
+// Initialize repository once, outside component
+const balanceRepository = createBalanceRepository();
+
+interface BankAccount {
+  id: string;
+  user_id: string;
+  connection_id: string;
+  account_id: string;
+  account_name: string;
+  account_type: string;
+  currency: string;
+  balance: number;
+  last_updated: string;
+  created_at: string;
+  updated_at: string;
+  bank_connection: {
+    id: string;
+    bank_name?: string;
+  };
+}
 
 export default function TrendsScreen() {
   const [timeRangeType, setTimeRangeType] = useState<'Month' | 'Year'>('Month');
   const [activeTab, setActiveTab] = useState<TabType>('Balance');
+  const [showAccountSelector, setShowAccountSelector] = useState(false);
+  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const { transactions, loading, error, refreshing, refresh, bankConnections } = useTransactions();
 
-  const spendingAnalysis = useSpendingAnalysis(transactions);
-  const balanceAnalysis = useBalanceAnalysis(transactions, timeRangeType);
+  // Fetch bank accounts
+  React.useEffect(() => {
+    const fetchBankAccounts = async () => {
+      console.log('🏦 Fetching bank accounts...');
+      try {
+        const groupedBalances = await balanceRepository.getGroupedBalances();
+        console.log(`✅ Found ${groupedBalances.length} bank connections`);
+
+        // Flatten accounts from all connections
+        const accounts = groupedBalances.flatMap((group) =>
+          group.accounts.map((account) => ({
+            ...account,
+            bank_connection: {
+              id: group.connection.id,
+              bank_name: group.connection.bank_name,
+            },
+          }))
+        );
+
+        console.log(
+          '🏦 Accounts:',
+          accounts.map((acc) => ({
+            account_name: acc.account_name,
+            connection_id: acc.connection_id,
+            account_type: acc.account_type,
+          }))
+        );
+
+        setBankAccounts(accounts);
+      } catch (err) {
+        console.error('❌ Error fetching bank accounts:', err);
+      }
+    };
+    fetchBankAccounts();
+  }, []);
+
+  // Initialize selected accounts if empty
+  React.useEffect(() => {
+    console.log('🔄 Account Selection State:', {
+      currentSelected: Array.from(selectedAccounts),
+      availableAccounts: bankAccounts.map((acc) => ({
+        account_name: acc.account_name,
+        connection_id: acc.connection_id,
+      })),
+    });
+
+    if (selectedAccounts.size === 0 && bankAccounts.length > 0) {
+      const newSelectedAccounts = new Set(bankAccounts.map((acc) => acc.connection_id));
+      console.log('🔄 Initializing selected accounts:', Array.from(newSelectedAccounts));
+      setSelectedAccounts(newSelectedAccounts);
+    }
+  }, [bankAccounts]);
+
+  const filteredTransactions = transactions.filter((t) => {
+    const isSelected = selectedAccounts.has(t.connection_id);
+    console.log(`🔍 Transaction check:`, {
+      connection_id: t.connection_id,
+      amount: t.amount,
+      isSelected,
+      selectedAccounts: Array.from(selectedAccounts),
+    });
+    return isSelected;
+  });
+
+  const spendingAnalysis = useSpendingAnalysis(filteredTransactions);
+  const balanceAnalysis = useBalanceAnalysis(
+    filteredTransactions,
+    timeRangeType,
+    bankAccounts
+      .filter((acc) => selectedAccounts.has(acc.connection_id))
+      .map((acc) => ({
+        connection_id: acc.connection_id,
+        balance: acc.balance,
+      }))
+  );
   const timeRange = getTimeRange(timeRangeType);
+
+  const toggleAccount = (connectionId: string) => {
+    console.log(`Toggling account with connection_id: ${connectionId}`);
+    const newSelected = new Set(selectedAccounts);
+    if (newSelected.has(connectionId)) {
+      console.log(`Removing account: ${connectionId}`);
+      newSelected.delete(connectionId);
+    } else {
+      console.log(`Adding account: ${connectionId}`);
+      newSelected.add(connectionId);
+    }
+    console.log('New selected accounts:', Array.from(newSelected));
+    setSelectedAccounts(newSelected);
+  };
+
+  const renderAccountSelector = () => (
+    <Modal
+      visible={showAccountSelector}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowAccountSelector(false)}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setShowAccountSelector(false)}
+      >
+        <View style={styles.accountSelectorContainer}>
+          <View style={styles.accountSelectorHeader}>
+            <Text style={styles.accountSelectorTitle}>Select Accounts</Text>
+            <TouchableOpacity onPress={() => setShowAccountSelector(false)}>
+              <Ionicons name="close" size={24} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+          {bankAccounts.map((account) => (
+            <TouchableOpacity
+              key={account.id}
+              style={styles.accountItem}
+              onPress={() => toggleAccount(account.connection_id)}
+            >
+              <View style={styles.accountItemLeft}>
+                <Text style={styles.accountName}>{account.account_name}</Text>
+                <Text style={styles.accountType}>{account.account_type}</Text>
+              </View>
+              <View
+                style={[
+                  styles.checkbox,
+                  selectedAccounts.has(account.connection_id) && styles.checkboxSelected,
+                ]}
+              >
+                {selectedAccounts.has(account.connection_id) && (
+                  <Ionicons name="checkmark" size={16} color="#FFF" />
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <View style={styles.headerLeft}>
-        <Text style={styles.accountsText}>{bankConnections.length} accounts</Text>
+      <TouchableOpacity style={styles.headerLeft} onPress={() => setShowAccountSelector(true)}>
+        <Text style={styles.accountsText}>
+          {selectedAccounts.size} {selectedAccounts.size === 1 ? 'account' : 'accounts'}
+        </Text>
         <Ionicons name="chevron-down" size={20} color={colors.text.secondary} />
-      </View>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.periodSelector}>
         <Text style={styles.periodText}>This {timeRangeType.toLowerCase()}</Text>
       </TouchableOpacity>
@@ -90,19 +251,22 @@ export default function TrendsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      {renderHeader()}
-      {renderTabs()}
-      {activeTab === 'Balance' && (
-        <BalanceView
-          data={balanceAnalysis}
-          timeRange={timeRange}
-          onTimeRangeChange={setTimeRangeType}
-        />
-      )}
-      {activeTab === 'Spending' && <SpendingView data={spendingAnalysis} />}
-      {activeTab === 'Target' && <TargetView />}
-    </ScrollView>
+    <>
+      <ScrollView style={styles.container}>
+        {renderHeader()}
+        {renderTabs()}
+        {activeTab === 'Balance' && (
+          <BalanceView
+            data={balanceAnalysis}
+            timeRange={timeRange}
+            onTimeRangeChange={setTimeRangeType}
+          />
+        )}
+        {activeTab === 'Spending' && <SpendingView data={spendingAnalysis} />}
+        {activeTab === 'Target' && <TargetView />}
+      </ScrollView>
+      {renderAccountSelector()}
+    </>
   );
 }
 
@@ -180,5 +344,64 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-start',
+  },
+  accountSelectorContainer: {
+    backgroundColor: '#0A1A2F',
+    marginTop: 60,
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+  },
+  accountSelectorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  accountSelectorTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  accountItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  accountItemLeft: {
+    flex: 1,
+  },
+  accountName: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  accountType: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+    textTransform: 'uppercase',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.text.secondary,
+    marginLeft: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
 });
