@@ -2,7 +2,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
-import BalancesScreen from '../screens/BalancesScreen';
 import ChallengesScreen from '../screens/ChallengesScreen';
 import CallbackScreen from '../screens/CallbackScreen';
 import TrendsScreen from '../screens/TrendsScreen';
@@ -41,16 +40,6 @@ export function TabNavigator() {
           title: 'Home',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Balances"
-        component={BalancesScreen}
-        options={{
-          title: 'Balances',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cash-outline" size={size} color={color} />
           ),
         }}
       />

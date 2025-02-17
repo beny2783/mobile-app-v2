@@ -5,7 +5,6 @@ export type AppTabParamList = {
         error?: string;
       }
     | undefined;
-  Balances: undefined;
   Transactions: { refresh?: boolean } | undefined;
   Trends: undefined;
   Challenges: undefined;

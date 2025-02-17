@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
@@ -17,11 +18,18 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { AppTabParamList } from '../types/navigation';
 import { NotificationTest } from '../components/NotificationTest';
+import HomeHeader from '../components/HomeHeader';
+import SummaryCards from '../components/SummaryCards';
+import BankCard from '../components/BankCard';
+import { createBalanceRepository, GroupedBalances } from '../repositories/balance';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<AppTabParamList, 'Home'>;
 type HomeScreenRouteProp = RouteProp<AppTabParamList, 'Home'>;
+
+// Initialize repository once, outside component
+const balanceRepository = createBalanceRepository();
 
 export default function HomeScreen() {
   console.log('🏦 Rendering HomeScreen');
@@ -31,10 +39,14 @@ export default function HomeScreen() {
   const { trueLayerService } = useServices();
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [groupedBalances, setGroupedBalances] = useState<GroupedBalances[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const {
     connections,
-    loading,
+    loading: connectionLoading,
     error: connectionError,
     refresh: refreshConnections,
     disconnectBank,
@@ -46,9 +58,9 @@ export default function HomeScreen() {
       count: connections.length,
       status,
       error: connectionError,
-      loading,
+      loading: connectionLoading,
     });
-  }, [connections, status, connectionError, loading]);
+  }, [connections, status, connectionError, connectionLoading]);
 
   useEffect(() => {
     console.log('📝 Route params changed:', route.params);
@@ -146,250 +158,162 @@ export default function HomeScreen() {
     }
   };
 
+  const handleSearchPress = () => {
+    setIsSearchVisible(true);
+    // TODO: Implement search functionality
+  };
+
+  const handleAddPress = () => {
+    handleBankConnection();
+  };
+
+  const handleProfilePress = () => {
+    navigation.navigate('Profile');
+  };
+
+  const fetchBalances = async () => {
+    try {
+      console.log('🏦 HomeScreen: Fetching grouped balances...');
+      const balances = await balanceRepository.getGroupedBalances();
+      console.log(`✅ HomeScreen: Found ${balances.length} bank connections`);
+
+      setGroupedBalances(balances);
+      setError(null);
+    } catch (err) {
+      console.error('❌ HomeScreen: Error fetching balances:', err);
+      setError('Failed to load balances');
+      setGroupedBalances([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBalances();
+  }, []);
+
+  const onRefresh = () => {
+    console.log('🔄 HomeScreen: Refreshing data...');
+    setRefreshing(true);
+    fetchBalances();
+  };
+
+  // Calculate total balances and monthly spend
+  const personalAccounts = groupedBalances.filter(
+    (group) => !group.connection.bank_name?.toLowerCase().includes('joint')
+  );
+  const jointAccounts = groupedBalances.filter((group) =>
+    group.connection.bank_name?.toLowerCase().includes('joint')
+  );
+
+  const calculateTotalBalance = (groups: GroupedBalances[]) =>
+    groups.reduce(
+      (total, group) => total + group.accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0),
+      0
+    );
+
+  const personalBalance = calculateTotalBalance(personalAccounts);
+  const jointBalance = calculateTotalBalance(jointAccounts);
+
+  // TODO: Calculate actual monthly spend from transactions
+  const monthlySpend = 1288.4;
+
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#87CEEB" />
+        <HomeHeader
+          onSearchPress={handleSearchPress}
+          onAddPress={handleAddPress}
+          onProfilePress={handleProfilePress}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Ionicons name="wallet-outline" size={24} color="#87CEEB" />
-        <Text style={styles.title}>Connect Your Banks</Text>
-      </View>
+    <View style={styles.container}>
+      <HomeHeader
+        onSearchPress={handleSearchPress}
+        onAddPress={handleAddPress}
+        onProfilePress={handleProfilePress}
+      />
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <SummaryCards
+          personalBalance={personalBalance}
+          jointBalance={jointBalance}
+          monthlySpend={monthlySpend}
+        />
 
-      <Text style={styles.description}>
-        Connect multiple bank accounts to automatically track your spending and manage your finances
-        across all your accounts.
-      </Text>
+        {groupedBalances.map((group) => (
+          <BankCard
+            key={group.connection.id}
+            bankName={group.connection.bank_name || 'Connected Bank'}
+            accounts={group.accounts}
+            onRefresh={onRefresh}
+            onDisconnect={() => handleDisconnectBank(group.connection.id)}
+            connectionId={group.connection.id}
+          />
+        ))}
 
-      <NotificationTest />
-
-      {/* Connected Banks Section */}
-      {connections.length > 0 && (
-        <View style={styles.connectionsContainer}>
-          <Text style={styles.sectionTitle}>Connected Banks ({connections.length})</Text>
-          {connections.map((connection) => (
-            <View key={connection.id} style={styles.connectionCard}>
-              <View style={styles.connectionHeader}>
-                <View style={styles.bankInfo}>
-                  <View style={styles.bankNameContainer}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        {
-                          backgroundColor:
-                            connection.last_sync_status === 'success' ? '#4CAF50' : '#FFA726',
-                        },
-                      ]}
-                    />
-                    <Text style={styles.bankName}>
-                      {connection.bank_name ||
-                        `${connection.provider.charAt(0).toUpperCase()}${connection.provider.slice(1)} Bank ${connections.length > 1 ? connection.id.slice(-4) : ''}`}
-                    </Text>
-                  </View>
-                  <Text style={styles.connectionStatus}>
-                    {connection.last_sync_status === 'success'
-                      ? 'Connected'
-                      : 'Connection needs update'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.disconnectButton}
-                  onPress={() => handleDisconnectBank(connection.id)}
-                >
-                  <Text style={styles.disconnectButtonText}>Disconnect</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.connectionDetails}>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Accounts Connected:</Text>
-                  <Text style={styles.detailValue}>
-                    {connection.account_count}{' '}
-                    {connection.account_count === 1 ? 'account' : 'accounts'}
-                  </Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Last Updated:</Text>
-                  <Text style={styles.detailValue}>
-                    {connection.last_sync
-                      ? new Date(connection.last_sync).toLocaleDateString()
-                      : 'Never'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* Add New Bank Section */}
-      <Text style={styles.sectionTitle}>Add Another Bank</Text>
-      <View style={styles.addBankCard}>
-        <TouchableOpacity
-          style={styles.connectButton}
-          onPress={handleBankConnection}
-          disabled={status === 'connecting'}
-        >
-          <View style={styles.connectButtonContent}>
-            <Ionicons name="add-circle-outline" size={24} color="#FFFFFF" />
-            <Text style={styles.connectButtonText}>Connect Bank</Text>
+        {groupedBalances.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No accounts found</Text>
+            <Text style={styles.emptySubtext}>Connect a bank account to see your balances</Text>
           </View>
-        </TouchableOpacity>
-      </View>
+        )}
 
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
+        <View style={styles.notificationTestContainer}>
+          <NotificationTest />
         </View>
-      )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A1A2F',
+    backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    paddingBottom: 12,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '600',
-    marginLeft: 12,
-    color: '#FFFFFF',
-  },
-  description: {
-    fontSize: 16,
-    color: '#A0A7B5',
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    lineHeight: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 16,
-    paddingHorizontal: 20,
-  },
-  connectionsContainer: {
-    marginBottom: 24,
-  },
-  connectionCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  connectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  bankInfo: {
+  scrollView: {
     flex: 1,
   },
-  bankNameContainer: {
-    flexDirection: 'row',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 4,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+  loadingText: {
+    marginTop: 16,
+    color: colors.text.secondary,
   },
-  bankName: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#0A1A2F',
-  },
-  connectionStatus: {
-    fontSize: 14,
-    color: '#666666',
-    marginLeft: 16,
-  },
-  connectionDetails: {
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    paddingTop: 12,
-    marginTop: 4,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 32,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: colors.text.primary,
     marginBottom: 8,
   },
-  detailLabel: {
+  emptySubtext: {
     fontSize: 14,
-    color: '#666666',
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
-  detailValue: {
-    fontSize: 14,
-    color: '#0A1A2F',
-    fontWeight: '500',
-  },
-  disconnectButton: {
-    backgroundColor: '#FF5252',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-  },
-  disconnectButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  addBankCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 20,
-    borderRadius: 16,
-    padding: 16,
-  },
-  connectButton: {
-    backgroundColor: '#87CEEB',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  connectButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  connectButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  errorContainer: {
-    marginHorizontal: 20,
-    marginBottom: 24,
-    padding: 12,
-    backgroundColor: '#FFE5E5',
-    borderRadius: 8,
-  },
-  errorText: {
-    color: '#FF5252',
-    fontSize: 14,
+  notificationTestContainer: {
+    marginTop: 24,
+    marginBottom: 32,
+    paddingHorizontal: 16,
   },
 });
