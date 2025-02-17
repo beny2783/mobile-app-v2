@@ -22,6 +22,7 @@ import HomeHeader from '../components/HomeHeader';
 import SummaryCards from '../components/SummaryCards';
 import BankCard from '../components/BankCard';
 import { createBalanceRepository, GroupedBalances } from '../repositories/balance';
+import LoadingOverlay from '../components/LoadingOverlay';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -43,6 +44,7 @@ export default function HomeScreen() {
   const [groupedBalances, setGroupedBalances] = useState<GroupedBalances[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
 
   const {
     connections,
@@ -66,11 +68,9 @@ export default function HomeScreen() {
     console.log('📝 Route params changed:', route.params);
     const init = async () => {
       try {
-        // Check for success/error from callback first
         if (route.params?.success) {
           console.log('✅ Bank connection successful');
           setStatus('connected');
-          await refreshConnections();
           return;
         }
 
@@ -88,12 +88,13 @@ export default function HomeScreen() {
     };
 
     init();
-  }, [route.params, refreshConnections]);
+  }, [route.params]);
 
   const handleBankConnection = async () => {
     console.log('🔄 Starting bank connection process...');
     setError(null);
     setStatus('connecting');
+    setLoadingMessage('Connecting to your bank...');
 
     try {
       const authUrl = trueLayerService.getAuthUrl();
@@ -111,29 +112,38 @@ export default function HomeScreen() {
 
         if (code) {
           console.log('🔑 Received auth code, exchanging...');
+          setLoadingMessage('Authorizing access...');
+
           try {
             await trueLayerService.exchangeCode(code);
             console.log('✅ Code exchange successful');
 
-            // Ensure connections are refreshed before proceeding
-            console.log('🔄 Refreshing bank connections...');
+            // Ensure all data is refreshed in the correct order
+            console.log('🔄 Refreshing bank connections and balances...');
+            setLoadingMessage('Fetching your accounts...');
             await refreshConnections();
-            console.log('✅ Bank connections refreshed');
+
+            setLoadingMessage('Updating balances...');
+            await fetchBalances();
 
             setStatus('connected');
+            setLoadingMessage('');
+            console.log('✅ Home screen data updated');
 
-            // Navigate to Transactions screen with refresh parameter
+            // Only navigate after all data is updated
             navigation.navigate('Transactions', { refresh: true });
           } catch (exchangeError) {
             console.error('❌ Code exchange failed:', exchangeError);
             setError('Failed to complete bank connection');
             setStatus('error');
+            setLoadingMessage('');
           }
         }
       } else {
         console.log('❌ Bank connection cancelled or failed');
         setError('Bank connection cancelled or failed');
         setStatus('error');
+        setLoadingMessage('');
       }
 
       await WebBrowser.coolDownAsync();
@@ -142,6 +152,7 @@ export default function HomeScreen() {
       console.error('❌ Error connecting bank:', error);
       setError(`Failed to connect to bank: ${errorMessage}`);
       setStatus('error');
+      setLoadingMessage('');
     }
   };
 
@@ -151,6 +162,8 @@ export default function HomeScreen() {
       setError(null);
       await disconnectBank(connectionId);
       console.log('✅ Bank disconnected successfully');
+      // Refresh balances after successful disconnect
+      await fetchBalances();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ Error disconnecting bank:', error);
@@ -222,6 +235,7 @@ export default function HomeScreen() {
   if (loading) {
     return (
       <View style={styles.container}>
+        <LoadingOverlay visible={!!loadingMessage} message={loadingMessage} />
         <HomeHeader
           onSearchPress={handleSearchPress}
           onAddPress={handleAddPress}
@@ -237,6 +251,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      <LoadingOverlay visible={!!loadingMessage} message={loadingMessage} />
       <HomeHeader
         onSearchPress={handleSearchPress}
         onAddPress={handleAddPress}
