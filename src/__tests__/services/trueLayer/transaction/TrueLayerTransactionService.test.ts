@@ -22,6 +22,8 @@ describe('TrueLayerTransactionService', () => {
   const mockConnectionId = 'test-connection-id';
 
   const mockTransaction: Transaction = {
+    id: 'test-id',
+    user_id: mockUserId,
     transaction_id: 'test-transaction-id',
     account_id: 'test-account-id',
     connection_id: mockConnectionId,
@@ -29,9 +31,13 @@ describe('TrueLayerTransactionService', () => {
     description: 'Test Transaction',
     amount: 100,
     currency: 'GBP',
+    type: 'debit',
     transaction_type: 'debit',
     transaction_category: 'shopping',
     merchant_name: 'Test Store',
+    date: '2024-01-01',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
   };
 
   beforeEach(() => {
@@ -68,7 +74,7 @@ describe('TrueLayerTransactionService', () => {
       expect(result[0]).toMatchObject({
         ...mockTransaction,
         processed_at: expect.any(String),
-      } as Transaction & { processed_at: string });
+      });
 
       const processedTransaction = result[0] as Transaction & { processed_at: string };
       expect(new Date(processedTransaction.processed_at).getTime()).toBeLessThanOrEqual(Date.now());
@@ -76,8 +82,75 @@ describe('TrueLayerTransactionService', () => {
 
     it('should handle empty transaction list', async () => {
       const result = await service.processTransactions([]);
-
       expect(result).toEqual([]);
+    });
+
+    it('should use provided connection_id when transaction has none', async () => {
+      const transactionWithoutConnection = {
+        ...mockTransaction,
+        connection_id: '',
+      };
+
+      const result = await service.processTransactions(
+        [transactionWithoutConnection],
+        'new-connection-id'
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0].connection_id).toBe('new-connection-id');
+    });
+
+    it('should keep existing connection_id when present', async () => {
+      const result = await service.processTransactions(
+        [mockTransaction],
+        'different-connection-id'
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0].connection_id).toBe(mockTransaction.connection_id);
+    });
+
+    it('should create unique transaction_id when not present', async () => {
+      const transactionWithoutId = {
+        ...mockTransaction,
+        transaction_id: '',
+      };
+
+      const result = await service.processTransactions([transactionWithoutId], mockConnectionId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].transaction_id).toBe(`${mockConnectionId}_${transactionWithoutId.id}`);
+    });
+
+    it('should filter out transactions without connection_id', async () => {
+      const transactionWithoutConnection = {
+        ...mockTransaction,
+        connection_id: '',
+      };
+
+      const result = await service.processTransactions([transactionWithoutConnection]);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should handle multiple transactions with mixed connection states', async () => {
+      const transactions = [
+        mockTransaction,
+        { ...mockTransaction, connection_id: '', id: 'id-2', transaction_id: 'trans-2' },
+        {
+          ...mockTransaction,
+          connection_id: 'other-connection',
+          id: 'id-3',
+          transaction_id: 'trans-3',
+        },
+      ];
+
+      const result = await service.processTransactions(transactions, 'new-connection-id');
+
+      expect(result).toHaveLength(3);
+      expect(result[0].connection_id).toBe(mockTransaction.connection_id);
+      expect(result[1].connection_id).toBe('new-connection-id');
+      expect(result[2].connection_id).toBe('other-connection');
     });
   });
 
