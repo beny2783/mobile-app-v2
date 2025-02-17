@@ -261,6 +261,7 @@ export default function TrendsScreen() {
             data={spendingAnalysis}
             timeRange={spendingTimeRange}
             onTimeRangeChange={setSpendingTimeRange}
+            transactions={filteredTransactions}
           />
         )}
         {activeTab === 'Target' && <TargetView />}

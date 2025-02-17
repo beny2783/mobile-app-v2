@@ -32,6 +32,10 @@ export const colors = {
   gray: '#8E8E93',
 } as const;
 
+export const OPENAI = {
+  API_KEY: process.env.EXPO_PUBLIC_OPENAI_API_KEY || '',
+} as const;
+
 // Add debug logging
 if (__DEV__) {
   console.log('Constants loaded:', {
@@ -43,6 +47,10 @@ if (__DEV__) {
     TRUELAYER: {
       CLIENT_ID: TRUELAYER.CLIENT_ID ? 'provided' : 'missing',
       REDIRECT_URI: TRUELAYER.REDIRECT_URI,
+    },
+    OPENAI: {
+      hasApiKey: !!OPENAI.API_KEY,
+      keyPrefix: OPENAI.API_KEY ? OPENAI.API_KEY.substring(0, 7) + '...' : 'missing',
     },
   });
 }
@@ -59,6 +67,10 @@ if (__DEV__) {
       hasClientSecret: !!TRUELAYER.CLIENT_SECRET,
       redirectUri: TRUELAYER.REDIRECT_URI,
       platform: Platform.OS,
+    },
+    OPENAI: {
+      hasApiKey: !!OPENAI.API_KEY,
+      keyPrefix: OPENAI.API_KEY ? OPENAI.API_KEY.substring(0, 7) + '...' : 'missing',
     },
     ENV: {
       isDev: __DEV__,

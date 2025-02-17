@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,19 @@ import {
   Dimensions,
   Animated,
   FlatList,
+  TouchableWithoutFeedback,
+  GestureResponderEvent,
+  ActivityIndicator,
 } from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
 import { SpendingAnalysis } from '../utils/categoryUtils';
 import { colors } from '../constants/theme';
+import { localAIService } from '../services/LocalAIService';
+import { Transaction } from '../types/transaction';
+import { QuestionCards } from './QuestionCards';
+import { AIInsight } from '../types/insights';
+import { InsightCard } from './InsightCard';
 
 const { width } = Dimensions.get('window');
 
@@ -20,28 +28,57 @@ interface SpendingViewProps {
   data: SpendingAnalysis;
   timeRange: 'week' | 'month';
   onTimeRangeChange: (range: 'week' | 'month') => void;
-}
-
-interface Transaction {
-  id: number;
-  amount: number;
-  date: string;
-  merchant: string;
+  transactions: Transaction[];
 }
 
 export const SpendingView: React.FC<SpendingViewProps> = ({
   data,
   timeRange,
   onTimeRangeChange,
+  transactions,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedPieSection, setSelectedPieSection] = useState<number | null>(null);
+  const [aiInsights, setAiInsights] = useState<any[]>([]);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [insights, setInsights] = useState<AIInsight[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Animation values
   const categoryDetailsHeight = useRef(new Animated.Value(0)).current;
   const categoryDetailsFade = useRef(new Animated.Value(0)).current;
+  const overlayAnimation = useRef(new Animated.Value(0)).current;
 
-  const handleCategoryPress = (category: string) => {
+  useEffect(() => {
+    loadAIInsights();
+  }, [transactions]);
+
+  const loadAIInsights = async () => {
+    if (!transactions.length) return;
+
+    setLoadingInsights(true);
+    try {
+      const insights = await localAIService.analyzeTransactions(transactions);
+      setAiInsights(insights);
+    } catch (error) {
+      console.error('Error loading AI insights:', error);
+    } finally {
+      setLoadingInsights(false);
+    }
+  };
+
+  const animateOverlay = (show: boolean) => {
+    Animated.spring(overlayAnimation, {
+      toValue: show ? 1 : 0,
+      useNativeDriver: true,
+      damping: 15,
+      mass: 1,
+      stiffness: 200,
+    }).start();
+  };
+
+  const handleCategoryPress = (category: string, index?: number) => {
     const isDeselecting = selectedCategory === category;
 
     // Animate the details section
@@ -58,7 +95,92 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
       }),
     ]).start();
 
+    if (isDeselecting) {
+      animateOverlay(false);
+    } else {
+      animateOverlay(true);
+    }
+
     setSelectedCategory(isDeselecting ? null : category);
+    setSelectedPieSection(isDeselecting ? null : (index ?? null));
+  };
+
+  // Handle pie chart section press
+  const handlePiePress = (index: number) => {
+    const category = data.categories[index];
+    handleCategoryPress(category.name, index);
+    animateOverlay(true);
+  };
+
+  const handleChartPress = (event: GestureResponderEvent) => {
+    const { locationX, locationY } = event.nativeEvent;
+    const chartWidth = width - 32; // Total width minus padding
+    const chartHeight = 220;
+
+    // Adjust for the actual pie chart position and size
+    const pieSize = Math.min(chartWidth, chartHeight) * 0.8; // Pie typically takes 80% of the container
+    const pieRadius = pieSize / 2;
+
+    // The pie chart's center point (accounting for padding)
+    const centerX = chartWidth / 2;
+    const centerY = chartHeight / 2;
+
+    // Calculate distance from center
+    const dx = locationX - centerX;
+    const dy = locationY - centerY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Only process if touch is within the pie chart radius
+    // Add a small buffer (1.1) to make edge touches more forgiving
+    if (distance <= pieRadius * 1.1) {
+      // Calculate angle in radians
+      // Adjust by -Math.PI/2 to align with the pie chart's starting position (top)
+      let angle = Math.atan2(dy, dx) + Math.PI / 2;
+      if (angle < 0) angle += 2 * Math.PI;
+
+      // Convert angle to degrees and normalize
+      let degrees = (angle * 180) / Math.PI;
+      if (degrees < 0) degrees += 360;
+
+      // Calculate total for percentage calculations
+      const total = data.categories.reduce((sum, cat) => sum + cat.amount, 0);
+      let currentAngle = 0;
+
+      // Add some debugging information
+      console.log('Touch detected:', {
+        x: locationX,
+        y: locationY,
+        distance,
+        degrees,
+        isWithinRadius: distance <= pieRadius * 1.1,
+      });
+
+      // Find the matching section
+      for (let i = 0; i < data.categories.length; i++) {
+        const sectionPercentage = data.categories[i].amount / total;
+        const sectionAngle = sectionPercentage * 360;
+
+        if (degrees <= currentAngle + sectionAngle) {
+          // Add some debugging information
+          console.log('Section found:', {
+            index: i,
+            category: data.categories[i].name,
+            startAngle: currentAngle,
+            endAngle: currentAngle + sectionAngle,
+            touchAngle: degrees,
+          });
+
+          handlePiePress(i);
+          break;
+        }
+        currentAngle += sectionAngle;
+      }
+    } else {
+      // If we're outside the pie radius and something is selected, deselect it
+      if (selectedPieSection !== null) {
+        handleCategoryPress(data.categories[selectedPieSection].name);
+      }
+    }
   };
 
   const getChangeIcon = (change: number) => {
@@ -84,24 +206,126 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
 
   const getMockTransactions = (category: string): Transaction[] => {
     return [
-      { id: 1, amount: -25.5, date: '2024-03-15', merchant: 'Local Store' },
-      { id: 2, amount: -32.8, date: '2024-03-14', merchant: 'Online Shop' },
-      { id: 3, amount: -18.99, date: '2024-03-12', merchant: 'Service Provider' },
+      {
+        id: '1',
+        amount: -25.5,
+        date: '2024-03-15',
+        description: 'Local Store',
+        user_id: 'test',
+        connection_id: 'test',
+        account_id: 'test',
+        currency: 'GBP',
+        type: 'debit',
+        created_at: '2024-03-15',
+        updated_at: '2024-03-15',
+      },
+      {
+        id: '2',
+        amount: -32.8,
+        date: '2024-03-14',
+        description: 'Online Shop',
+        user_id: 'test',
+        connection_id: 'test',
+        account_id: 'test',
+        currency: 'GBP',
+        type: 'debit',
+        created_at: '2024-03-14',
+        updated_at: '2024-03-14',
+      },
+      {
+        id: '3',
+        amount: -18.99,
+        date: '2024-03-12',
+        description: 'Service Provider',
+        user_id: 'test',
+        connection_id: 'test',
+        account_id: 'test',
+        currency: 'GBP',
+        type: 'debit',
+        created_at: '2024-03-12',
+        updated_at: '2024-03-12',
+      },
     ];
   };
 
   const renderTransaction = ({ item }: { item: Transaction }) => (
     <View style={styles.transactionItem}>
       <View style={styles.transactionLeft}>
-        <Text style={styles.transactionMerchant}>{item.merchant}</Text>
+        <Text style={styles.transactionMerchant}>{item.description}</Text>
         <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
       </View>
       <Text style={styles.transactionAmount}>{formatAmount(item.amount)}</Text>
     </View>
   );
 
+  const renderInsightIcon = (type: string) => {
+    switch (type) {
+      case 'saving_opportunity':
+        return <Ionicons name="trending-down" size={24} color="#4CAF50" />;
+      case 'anomaly':
+        return <Ionicons name="alert-circle" size={24} color="#FFC107" />;
+      case 'forecast':
+        return <Ionicons name="analytics" size={24} color="#2196F3" />;
+      default:
+        return <Ionicons name="trending-up" size={24} color="#F44336" />;
+    }
+  };
+
+  const getInsightColor = (type: string) => {
+    switch (type) {
+      case 'saving_opportunity':
+        return '#4CAF5033';
+      case 'anomaly':
+        return '#FFC10733';
+      case 'forecast':
+        return '#2196F333';
+      default:
+        return '#F4433633';
+    }
+  };
+
+  const handleQuestionSelect = async (questionId: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const newInsights = await localAIService.analyzeSpecificQuestion(questionId, transactions);
+      setInsights(newInsights);
+    } catch (err) {
+      setError('Failed to analyze question. Please try again.');
+      console.error('Error analyzing question:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container}>
+      <QuestionCards onSelectQuestion={handleQuestionSelect} />
+
+      {isLoading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Analyzing your transactions...</Text>
+        </View>
+      )}
+
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {insights.length > 0 && (
+        <View style={styles.insightsContainer}>
+          <Text style={styles.insightsTitle}>AI Insights</Text>
+          <ScrollView>
+            {insights.map((insight, index) => (
+              <InsightCard key={index} insight={insight} />
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Time Range Selector */}
       <View style={styles.timeSelector}>
         <TouchableOpacity
@@ -184,26 +408,59 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
 
       {/* Category Breakdown */}
       <View style={styles.chartWrapper}>
-        <PieChart
-          data={data.categories.map((category, index) => ({
-            name: category.name,
-            amount: category.amount,
-            color: selectedPieSection === index ? category.color : `${category.color}99`,
-            legendFontColor: '#FFF',
-            legendFontSize: 12,
-          }))}
-          width={width - 32}
-          height={220}
-          chartConfig={{
-            color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-            labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-          }}
-          accessor="amount"
-          backgroundColor="transparent"
-          paddingLeft="15"
-          absolute
-          hasLegend={false}
-        />
+        <TouchableWithoutFeedback onPress={handleChartPress}>
+          <View>
+            <PieChart
+              data={data.categories.map((category, index) => ({
+                name: category.name,
+                amount: category.amount,
+                color: selectedPieSection === index ? category.color : `${category.color}99`,
+                legendFontColor: '#FFF',
+                legendFontSize: 12,
+              }))}
+              width={width - 32}
+              height={220}
+              chartConfig={{
+                color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+              }}
+              accessor="amount"
+              backgroundColor="transparent"
+              paddingLeft="15"
+              absolute
+              hasLegend={false}
+            />
+          </View>
+        </TouchableWithoutFeedback>
+        {selectedPieSection !== null && (
+          <Animated.View
+            style={[
+              styles.selectedCategoryOverlay,
+              {
+                opacity: overlayAnimation,
+                transform: [
+                  {
+                    scale: overlayAnimation.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.8, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Text style={styles.selectedCategoryName}>
+              {data.categories[selectedPieSection].name}
+            </Text>
+            <Text style={styles.selectedCategoryAmount}>
+              {formatAmount(data.categories[selectedPieSection].amount)}
+            </Text>
+            <Text style={styles.selectedCategoryPercentage}>
+              {((data.categories[selectedPieSection].amount / data.total) * 100).toFixed(1)}% of
+              total
+            </Text>
+          </Animated.View>
+        )}
       </View>
 
       {/* Category List */}
@@ -268,62 +525,12 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
                 <FlatList
                   data={getMockTransactions(category.name)}
                   renderItem={renderTransaction}
-                  keyExtractor={(item) => item.id.toString()}
+                  keyExtractor={(item) => item.id}
                   scrollEnabled={false}
                 />
               </Animated.View>
             )}
           </View>
-        ))}
-      </View>
-
-      {/* Insights */}
-      <View style={styles.insightsContainer}>
-        <Text style={styles.insightsTitle}>Spending Insights</Text>
-        {data.insights.map((insight, index) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.insightCard}
-            onPress={() => {
-              if (insight.category) {
-                handleCategoryPress(insight.category);
-              }
-            }}
-          >
-            <View
-              style={[
-                styles.insightIconContainer,
-                { backgroundColor: insight.type === 'decrease' ? '#4CAF5033' : '#F4433633' },
-              ]}
-            >
-              <Ionicons
-                name={
-                  insight.type === 'decrease'
-                    ? 'trending-down'
-                    : insight.type === 'increase'
-                      ? 'trending-up'
-                      : 'alert-circle'
-                }
-                size={24}
-                color={
-                  insight.type === 'decrease'
-                    ? '#4CAF50'
-                    : insight.type === 'increase'
-                      ? '#F44336'
-                      : '#FFC107'
-                }
-              />
-            </View>
-            <View style={styles.insightContent}>
-              <Text style={styles.insightTitle}>{insight.description}</Text>
-              {insight.amount && (
-                <Text style={styles.insightDetails}>
-                  {formatAmount(insight.amount)}
-                  {insight.percentage && ` • ${formatPercentage(insight.percentage)} change`}
-                </Text>
-              )}
-            </View>
-          </TouchableOpacity>
         ))}
       </View>
     </ScrollView>
@@ -510,34 +717,55 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 20,
     fontWeight: '600',
-    marginBottom: 16,
   },
-  insightCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  insightIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    padding: 24,
   },
-  insightContent: {
-    flex: 1,
+  loadingText: {
+    color: colors.text.secondary,
+    marginTop: 12,
+    fontSize: 16,
   },
-  insightTitle: {
+  errorContainer: {
+    padding: 16,
+    backgroundColor: 'rgba(255, 0, 0, 0.1)',
+    borderRadius: 8,
+    margin: 16,
+  },
+  errorText: {
+    color: '#FF4444',
+    textAlign: 'center',
+  },
+  selectedCategoryOverlay: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -75 }, { translateY: -50 }],
+    width: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(10, 26, 47, 0.9)',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  selectedCategoryName: {
     color: '#FFF',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  selectedCategoryAmount: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: '700',
     marginBottom: 4,
   },
-  insightDetails: {
+  selectedCategoryPercentage: {
     color: colors.text.secondary,
     fontSize: 12,
   },
