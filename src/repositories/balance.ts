@@ -2,61 +2,34 @@ import { supabase } from '../services/supabase';
 import { RepositoryError, RepositoryErrorCode } from './types';
 import { authRepository } from './auth';
 import { getTrueLayerService } from '../services/trueLayer/TrueLayerServiceSingleton';
-
-export interface Balance {
-  id: string;
-  user_id: string;
-  connection_id: string;
-  account_id: string;
-  current: number;
-  available: number;
-  currency: string;
-  updated_at: string;
-  created_at: string;
-}
-
-export interface BankAccount {
-  id: string;
-  user_id: string;
-  connection_id: string;
-  account_id: string;
-  account_type: string;
-  account_name: string;
-  currency: string;
-  balance: number;
-  last_updated: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface GroupedBalances {
-  connection: {
-    id: string;
-    provider: string;
-    status: string;
-    created_at: string;
-    updated_at: string;
-    bank_name?: string;
-  };
-  accounts: BankAccount[];
-}
+import {
+  DatabaseBalance,
+  DatabaseBankAccount,
+  DatabaseGroupedBalances,
+} from '../types/bank/database';
+import { Balance, BankAccount, BalancePoint } from '../types/bank/balance';
 
 export interface BalanceRepository {
   // Core balance operations
-  getBalances(userId: string): Promise<Balance[]>;
-  getBalancesByConnection(connectionId: string): Promise<Balance[]>;
-  getGroupedBalances(): Promise<GroupedBalances[]>;
+  getBalances(userId: string): Promise<DatabaseBalance[]>;
+  getBalancesByConnection(connectionId: string): Promise<DatabaseBalance[]>;
+  getGroupedBalances(): Promise<DatabaseGroupedBalances[]>;
   storeBalances(userId: string, connectionId: string, balances: Balance[]): Promise<void>;
 
   // Bank account operations
-  getBankAccounts(userId: string): Promise<BankAccount[]>;
-  getBankAccountsByConnection(connectionId: string): Promise<BankAccount[]>;
+  getBankAccounts(userId: string): Promise<DatabaseBankAccount[]>;
+  getBankAccountsByConnection(connectionId: string): Promise<DatabaseBankAccount[]>;
   storeBankAccounts(userId: string, connectionId: string, accounts: BankAccount[]): Promise<void>;
 
   // Analysis operations
   getTotalBalance(userId: string): Promise<number>;
-  getBalanceHistory(userId: string, days: number): Promise<{ date: string; balance: number }[]>;
+  getBalanceHistory(userId: string, days: number): Promise<BalancePoint[]>;
 }
+
+// Re-export types for backward compatibility
+export type { DatabaseBalance as Balance };
+export type { DatabaseBankAccount as BankAccount };
+export type { DatabaseGroupedBalances as GroupedBalances };
 
 export class SupabaseBalanceRepository implements BalanceRepository {
   private trueLayerService = getTrueLayerService();
@@ -76,7 +49,7 @@ export class SupabaseBalanceRepository implements BalanceRepository {
     throw repoError;
   }
 
-  async getBalances(userId: string): Promise<Balance[]> {
+  async getBalances(userId: string): Promise<DatabaseBalance[]> {
     try {
       console.log('[BalanceRepository] Fetching balances for user:', userId);
       const { data, error } = await supabase.from('balances').select('*').eq('user_id', userId);
@@ -84,13 +57,28 @@ export class SupabaseBalanceRepository implements BalanceRepository {
       if (error) throw this.handleError(error);
 
       console.log(`[BalanceRepository] Found ${data?.length || 0} balances`);
+      console.log(
+        '🏦 Sample balance (new DatabaseBalance type):',
+        data?.[0]
+          ? {
+              id: data[0].id,
+              account_id: data[0].account_id,
+              current: data[0].current,
+              available: data[0].available,
+              currency: data[0].currency,
+              user_id: data[0].user_id,
+              connection_id: data[0].connection_id,
+            }
+          : 'No balances found'
+      );
+
       return data || [];
     } catch (error) {
       throw this.handleError(error);
     }
   }
 
-  async getBalancesByConnection(connectionId: string): Promise<Balance[]> {
+  async getBalancesByConnection(connectionId: string): Promise<DatabaseBalance[]> {
     try {
       console.log('[BalanceRepository] Fetching balances for connection:', connectionId);
       const { data, error } = await supabase
@@ -107,7 +95,7 @@ export class SupabaseBalanceRepository implements BalanceRepository {
     }
   }
 
-  async getGroupedBalances(): Promise<GroupedBalances[]> {
+  async getGroupedBalances(): Promise<DatabaseGroupedBalances[]> {
     try {
       const user = await authRepository.getUser();
       if (!user)
@@ -146,14 +134,14 @@ export class SupabaseBalanceRepository implements BalanceRepository {
               .eq('user_id', user.id),
           ]);
 
-          const processedAccounts: BankAccount[] = accounts?.length
+          const processedAccounts: DatabaseBankAccount[] = accounts?.length
             ? accounts.map((account) => ({
                 ...account,
                 balance: balances?.find((b) => b.account_id === account.account_id)?.current || 0,
               }))
             : [];
 
-          return {
+          const result: DatabaseGroupedBalances = {
             connection: {
               id: connection.id,
               provider: connection.provider,
@@ -164,6 +152,22 @@ export class SupabaseBalanceRepository implements BalanceRepository {
             },
             accounts: processedAccounts,
           };
+
+          console.log('🏦 Grouped Balance (new DatabaseGroupedBalances type):', {
+            connectionId: result.connection.id,
+            provider: result.connection.provider,
+            accountCount: result.accounts.length,
+            sampleAccount: result.accounts[0]
+              ? {
+                  id: result.accounts[0].id,
+                  account_id: result.accounts[0].account_id,
+                  balance: result.accounts[0].balance,
+                  currency: result.accounts[0].currency,
+                }
+              : 'No accounts',
+          });
+
+          return result;
         })
       );
 
@@ -196,7 +200,7 @@ export class SupabaseBalanceRepository implements BalanceRepository {
     }
   }
 
-  async getBankAccounts(userId: string): Promise<BankAccount[]> {
+  async getBankAccounts(userId: string): Promise<DatabaseBankAccount[]> {
     try {
       console.log('[BalanceRepository] Fetching bank accounts for user:', userId);
       const { data, error } = await supabase
@@ -213,7 +217,7 @@ export class SupabaseBalanceRepository implements BalanceRepository {
     }
   }
 
-  async getBankAccountsByConnection(connectionId: string): Promise<BankAccount[]> {
+  async getBankAccountsByConnection(connectionId: string): Promise<DatabaseBankAccount[]> {
     try {
       console.log('[BalanceRepository] Fetching bank accounts for connection:', connectionId);
       const { data, error } = await supabase
@@ -279,10 +283,7 @@ export class SupabaseBalanceRepository implements BalanceRepository {
     }
   }
 
-  async getBalanceHistory(
-    userId: string,
-    days: number
-  ): Promise<{ date: string; balance: number }[]> {
+  async getBalanceHistory(userId: string, days: number): Promise<BalancePoint[]> {
     try {
       console.log('[BalanceRepository] Fetching balance history for user:', userId);
       const startDate = new Date();

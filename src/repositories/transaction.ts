@@ -1,4 +1,4 @@
-import { Transaction } from '../types';
+import { Transaction, DatabaseTransaction } from '../types/transaction';
 import { supabase } from '../services/supabase';
 import { ITrueLayerApiService } from '../services/trueLayer/types';
 import {
@@ -117,7 +117,7 @@ export class SupabaseTransactionRepository implements TransactionRepository {
     }
   }
 
-  categorizeTransaction(transaction: Transaction): string {
+  categorizeTransaction(transaction: DatabaseTransaction): string {
     const description = (transaction.description || '').toUpperCase();
     const merchantName = (transaction.merchant_name || '').toUpperCase();
 
@@ -138,7 +138,7 @@ export class SupabaseTransactionRepository implements TransactionRepository {
     return transaction.transaction_type || 'Other';
   }
 
-  async getTransactions(filters: TransactionFilters): Promise<Transaction[]> {
+  async getTransactions(filters: TransactionFilters): Promise<DatabaseTransaction[]> {
     try {
       console.log('[TransactionRepository] Fetching transactions with filters:', filters);
 
@@ -212,7 +212,7 @@ export class SupabaseTransactionRepository implements TransactionRepository {
     }
   }
 
-  async getTransactionById(transactionId: string): Promise<Transaction | null> {
+  async getTransactionById(transactionId: string): Promise<DatabaseTransaction | null> {
     try {
       console.log('[TransactionRepository] Fetching transaction by ID:', transactionId);
 
@@ -233,7 +233,7 @@ export class SupabaseTransactionRepository implements TransactionRepository {
     }
   }
 
-  async storeTransactions(transactions: Transaction[]): Promise<void> {
+  async storeTransactions(transactions: DatabaseTransaction[]): Promise<void> {
     try {
       console.log(`[TransactionRepository] Storing ${transactions.length} transactions`);
 
@@ -273,13 +273,35 @@ export class SupabaseTransactionRepository implements TransactionRepository {
     try {
       console.log(`[TransactionRepository] Syncing transactions for connection ${connectionId}`);
 
+      const user = await authRepository.getUser();
+      if (!user) {
+        throw this.handleError(new Error('No authenticated user found'));
+      }
+
       const transactions = await this.trueLayerService.fetchTransactionsForConnection(
         connectionId,
         fromDate,
         toDate
       );
 
-      await this.storeTransactions(transactions);
+      // Convert API transactions to database transactions
+      const dbTransactions: DatabaseTransaction[] = transactions.map((t) => ({
+        id: t.id,
+        user_id: user.id,
+        connection_id: connectionId,
+        amount: t.amount,
+        currency: t.currency,
+        description: t.description,
+        merchant_name: t.merchant_name,
+        timestamp: t.timestamp,
+        transaction_type: t.transaction_type,
+        transaction_category: t.transaction_category,
+        scheduled_date: undefined,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+
+      await this.storeTransactions(dbTransactions);
 
       // Update last sync time
       const { error } = await supabase

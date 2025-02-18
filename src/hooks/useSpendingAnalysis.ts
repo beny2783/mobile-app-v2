@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Transaction } from '../types';
+import { DatabaseTransaction } from '../types/transaction';
 import {
   getCategoryColor,
   SpendingAnalysis,
@@ -8,7 +8,7 @@ import {
 } from '../utils/categoryUtils';
 
 export const useSpendingAnalysis = (
-  transactions: Transaction[],
+  transactions: DatabaseTransaction[],
   timeRange: 'week' | 'month'
 ): SpendingAnalysis | null => {
   return useMemo(() => {
@@ -21,7 +21,7 @@ export const useSpendingAnalysis = (
     if (timeRange === 'week') {
       // Get the current day (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
       const currentDay = now.getDay();
-      // Calculate days to subtract to get to Monday (if Sunday, subtract 6, if Monday subtract 0, etc)
+      // Calculate days to subtract to get to Monday (if Sunday subtract 6, if Monday subtract 0, etc)
       const daysToSubtract = currentDay === 0 ? 6 : currentDay - 1;
       currentPeriodStart.setDate(now.getDate() - daysToSubtract);
     } else {

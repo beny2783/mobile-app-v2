@@ -11,7 +11,7 @@ import {
   BalanceResponse,
   ITrueLayerStorageService,
 } from '../types';
-import { Transaction } from '../../../types';
+import { DatabaseTransaction } from '../../../types/transaction';
 import { authRepository } from '../../../repositories/auth';
 
 export class TrueLayerApiService implements ITrueLayerApiService {
@@ -107,7 +107,7 @@ export class TrueLayerApiService implements ITrueLayerApiService {
     connectionId: string,
     fromDate?: Date,
     toDate?: Date
-  ): Promise<Transaction[]> {
+  ): Promise<DatabaseTransaction[]> {
     try {
       console.log(`🔄 Fetching transactions for connection ${connectionId}`);
 
@@ -129,7 +129,7 @@ export class TrueLayerApiService implements ITrueLayerApiService {
       const transactions = await this.fetchTransactions(token, fromDate, toDate);
 
       // Add connection_id to each transaction
-      const transactionsWithConnection = transactions.map((t: Transaction) => ({
+      const transactionsWithConnection = transactions.map((t: DatabaseTransaction) => ({
         ...t,
         connection_id: connectionId,
       }));
@@ -150,10 +150,14 @@ export class TrueLayerApiService implements ITrueLayerApiService {
     }
   }
 
-  async fetchTransactions(token: string, fromDate?: Date, toDate?: Date): Promise<Transaction[]> {
+  async fetchTransactions(
+    token: string,
+    fromDate?: Date,
+    toDate?: Date
+  ): Promise<DatabaseTransaction[]> {
     try {
       const accounts = await this.fetchAccounts(token);
-      const transactions: Transaction[] = [];
+      const transactions: DatabaseTransaction[] = [];
 
       for (const account of accounts) {
         try {
@@ -179,7 +183,22 @@ export class TrueLayerApiService implements ITrueLayerApiService {
 
           const data = await transactionsResponse.json();
           if (data.results) {
-            transactions.push(...data.results);
+            // Transform TrueLayer transactions to DatabaseTransactions
+            const dbTransactions = data.results.map((t: any) => ({
+              id: t.transaction_id,
+              amount: t.amount,
+              currency: t.currency,
+              description: t.description,
+              merchant_name: t.merchant_name,
+              timestamp: t.timestamp,
+              transaction_type: t.transaction_type,
+              transaction_category: t.transaction_category,
+              account_id: account.account_id,
+              user_id: '', // Will be set by the storage service
+              connection_id: '', // Will be set by the caller
+              scheduled_date: undefined,
+            }));
+            transactions.push(...dbTransactions);
           }
         } catch (error) {
           console.error(`Error fetching transactions for account ${account.account_id}:`, error);
@@ -227,9 +246,12 @@ export class TrueLayerApiService implements ITrueLayerApiService {
 
           const balanceData = await balanceResponse.json();
           if (balanceData.results?.[0]) {
+            const balance = balanceData.results[0];
             balances.push({
-              account_id: account.account_id,
-              ...balanceData.results[0],
+              current: balance.current,
+              available: balance.available,
+              currency: balance.currency,
+              update_timestamp: balance.update_timestamp || new Date().toISOString(),
             });
           }
         } catch (error) {
@@ -240,8 +262,8 @@ export class TrueLayerApiService implements ITrueLayerApiService {
       }
 
       return {
-        accounts: { results: accounts },
-        balances,
+        results: balances,
+        status: balances.length > 0 ? 'succeeded' : 'failed',
       };
     } catch (error) {
       if (error instanceof TrueLayerError) throw error;

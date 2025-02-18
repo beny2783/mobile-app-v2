@@ -1,4 +1,4 @@
-import { Transaction } from '../types';
+import { Transaction, DatabaseTransaction } from '../types/transaction';
 import {
   Target,
   CategoryTarget,
@@ -29,14 +29,14 @@ export interface MerchantCategory {
 
 export interface TransactionRepository {
   // Core transaction operations
-  getTransactions(filters: TransactionFilters): Promise<Transaction[]>;
-  getTransactionById(transactionId: string): Promise<Transaction | null>;
-  storeTransactions(transactions: Transaction[]): Promise<void>;
+  getTransactions(filters: TransactionFilters): Promise<DatabaseTransaction[]>;
+  getTransactionById(transactionId: string): Promise<DatabaseTransaction | null>;
+  storeTransactions(transactions: DatabaseTransaction[]): Promise<void>;
 
   // Category operations
   getCategories(): Promise<string[]>;
   getMerchantCategories(): Promise<MerchantCategory[]>;
-  categorizeTransaction(transaction: Transaction): string;
+  categorizeTransaction(transaction: DatabaseTransaction): string;
   updateTransactionCategory(transactionId: string, category: string): Promise<void>;
 
   // Sync operations

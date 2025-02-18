@@ -6,8 +6,9 @@ import {
   BankConnection,
   TrueLayerError,
   TrueLayerErrorCode,
+  BalanceResponse,
 } from '../types';
-import { Transaction } from '../../../types';
+import { DatabaseTransaction } from '../../../types/transaction';
 
 export class TrueLayerStorageService implements ITrueLayerStorageService {
   private encryption: EncryptionService;
@@ -87,7 +88,7 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
     }
   }
 
-  async storeTransactions(userId: string, transactions: Transaction[]): Promise<void> {
+  async storeTransactions(userId: string, transactions: DatabaseTransaction[]): Promise<void> {
     try {
       console.log(`💾 Storing ${transactions.length} transactions for user ${userId}`);
 
@@ -95,8 +96,7 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
       const transactionRecords = transactions.map((transaction) => ({
         user_id: userId,
         connection_id: transaction.connection_id,
-        transaction_id: transaction.transaction_id,
-        account_id: transaction.account_id || 'default',
+        transaction_id: transaction.id,
         timestamp: transaction.timestamp,
         description: transaction.description || '',
         amount: transaction.amount,
@@ -104,6 +104,7 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
         transaction_type: transaction.transaction_type || 'unknown',
         transaction_category: transaction.transaction_category || 'Uncategorized',
         merchant_name: transaction.merchant_name || null,
+        scheduled_date: transaction.scheduled_date || null,
       }));
 
       const { error } = await supabase.from('transactions').upsert(transactionRecords, {
@@ -151,41 +152,21 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
     }
   }
 
-  async storeBalances(userId: string, connectionId: string, balanceData: any): Promise<void> {
-    const { accounts, balances } = balanceData;
-
-    // Update bank accounts
-    for (const account of accounts.results) {
-      const balance = balances.find((b: any) => b.account_id === account.account_id);
-      if (!balance) continue;
-
-      const { error: accountError } = await supabase.from('bank_accounts').upsert(
-        {
-          user_id: userId,
-          connection_id: connectionId,
-          account_id: account.account_id,
-          account_type: account.account_type,
-          account_name: account.display_name || account.account_type,
-          currency: balance.currency,
-          balance: balance.current,
-          last_updated: new Date().toISOString(),
-        },
-        {
-          onConflict: 'user_id,connection_id,account_id',
-        }
-      );
-
-      if (accountError) throw accountError;
-    }
+  async storeBalances(
+    userId: string,
+    connectionId: string,
+    balanceData: BalanceResponse
+  ): Promise<void> {
+    const balances = balanceData.results;
 
     // Store balance records
-    const balanceRecords = balances.map((balance: any) => ({
+    const balanceRecords = balances.map((balance) => ({
       user_id: userId,
       connection_id: connectionId,
-      account_id: balance.account_id,
       current: balance.current,
       available: balance.available,
       currency: balance.currency,
+      updated_at: balance.update_timestamp,
     }));
 
     const { error: balanceError } = await supabase.from('balances').insert(balanceRecords);

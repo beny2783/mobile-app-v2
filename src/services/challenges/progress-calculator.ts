@@ -1,6 +1,6 @@
 import type { Challenge, UserChallenge, Transaction } from '../../types/challenges';
 
-interface ProgressResult {
+export interface ProgressResult {
   isCompleted: boolean;
   isFailed: boolean;
   progress: {

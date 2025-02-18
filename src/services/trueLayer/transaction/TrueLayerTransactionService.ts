@@ -1,6 +1,6 @@
 import { supabase } from '../../supabase';
 import { ITrueLayerTransactionService } from '../types';
-import { Transaction } from '../../../types';
+import { DatabaseTransaction } from '../../../types/transaction';
 import { ITrueLayerApiService } from '../types';
 import { ITrueLayerStorageService } from '../types';
 
@@ -12,7 +12,7 @@ export class TrueLayerTransactionService implements ITrueLayerTransactionService
     console.log('💸 Initializing TrueLayerTransactionService');
   }
 
-  async processTransactions(transactions: Transaction[]): Promise<Transaction[]> {
+  async processTransactions(transactions: DatabaseTransaction[]): Promise<DatabaseTransaction[]> {
     // Enrich transactions with additional data and processing
     const processedTransactions = transactions.map((transaction) => ({
       ...transaction,
@@ -22,7 +22,9 @@ export class TrueLayerTransactionService implements ITrueLayerTransactionService
     return processedTransactions;
   }
 
-  async categorizeTransactions(transactions: Transaction[]): Promise<Transaction[]> {
+  async categorizeTransactions(
+    transactions: DatabaseTransaction[]
+  ): Promise<DatabaseTransaction[]> {
     const { data: categories } = await supabase
       .from('merchant_categories')
       .select('merchant_pattern, category');

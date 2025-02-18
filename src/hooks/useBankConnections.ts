@@ -3,13 +3,7 @@ import { useDataFetching } from './useDataFetching';
 import { supabase } from '../services/supabase';
 import { useServices } from '../contexts/ServiceContext';
 import { authRepository } from '../repositories/auth';
-import type { BankConnection } from '../services/trueLayer/types';
-
-interface BankConnectionWithAccounts extends BankConnection {
-  account_count?: number;
-  last_sync_status?: 'pending' | 'needs_update' | 'success';
-  bank_accounts?: { count: number }[];
-}
+import { BankConnection, BankConnectionWithAccounts } from '../types/bank/connection';
 
 export function useBankConnections() {
   console.log('🎣 useBankConnections: Hook initialized');

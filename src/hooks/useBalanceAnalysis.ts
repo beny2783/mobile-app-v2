@@ -1,24 +1,24 @@
 import { useMemo } from 'react';
-import { Transaction } from '../types';
-import { BalanceData, TimeRange, getTimeRange } from '../utils/balanceUtils';
+import { DatabaseTransaction } from '../types/transaction';
+import { TimeRange, BalanceAnalysisData } from '../types/bank/analysis';
+import { BalancePoint } from '../types/bank/balance';
+import { getTimeRange, formatDate } from '../utils/balanceUtils';
 import { useTransactionPatterns } from './useTransactionPatterns';
-
-interface BalancePoint {
-  balance: number;
-  date: Date;
-  isSignificant?: boolean;
-}
 
 interface AccountBalance {
   connection_id: string;
   balance: number;
 }
 
+interface ExtendedBalancePoint extends BalancePoint {
+  isSignificant?: boolean;
+}
+
 export const useBalanceAnalysis = (
-  transactions: Transaction[],
-  timeRangeType: 'Month' | 'Year' = 'Month',
+  transactions: DatabaseTransaction[],
+  timeRangeType: TimeRange['type'] = 'Month',
   accountBalances: AccountBalance[] = []
-): BalanceData | null => {
+): BalanceAnalysisData | null => {
   const { recurringTransactions, recurringPayments, scheduledTransactions, seasonalPatterns } =
     useTransactionPatterns(transactions);
 
@@ -49,12 +49,12 @@ export const useBalanceAnalysis = (
 
     // Track running balance starting from the initial balance
     let runningBalance = startingBalance;
-    const dailyBalances = new Map<string, BalancePoint>();
+    const dailyBalances = new Map<string, ExtendedBalancePoint>();
 
     // Add initial balance point
     dailyBalances.set(startDate.toISOString().split('T')[0], {
       balance: startingBalance,
-      date: startDate,
+      date: startDate.toISOString(),
       isSignificant: true,
     });
 
@@ -77,7 +77,7 @@ export const useBalanceAnalysis = (
 
       dailyBalances.set(dateKey, {
         balance: runningBalance,
-        date: new Date(currentDate),
+        date: currentDate.toISOString(),
         isSignificant,
       });
 
@@ -86,7 +86,7 @@ export const useBalanceAnalysis = (
 
     // Convert to sorted array of points
     const allPoints = Array.from(dailyBalances.values()).sort(
-      (a, b) => a.date.getTime() - b.date.getTime()
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
     // Calculate money in/out only for the selected period
@@ -98,27 +98,33 @@ export const useBalanceAnalysis = (
       periodTransactions.filter((t) => t.amount < 0).reduce((sum, t) => sum + t.amount, 0)
     );
 
+    // Calculate upcoming payments
+    const upcomingPayments = calculateUpcomingPayments(
+      recurringPayments,
+      scheduledTransactions,
+      endDate
+    );
+
     return {
       currentBalance: currentTotalBalance,
       startingBalance,
       moneyIn,
       moneyOut,
       chartData: {
+        labels: allPoints.map((p) => formatDate(new Date(p.date))),
         current: allPoints.map((p) => p.balance),
-        estimated: [], // Remove estimation for now
-        labels: allPoints.map((p) => p.date.toISOString()),
+        forecast: [], // Remove estimation for now
       },
       upcomingPayments: {
-        total: 0,
-        recurring: 0,
-        scheduled: 0,
-        date: endDate.toISOString(),
+        total: upcomingPayments.total,
+        items: [], // TODO: Add detailed payment items
       },
       estimatedBalance: {
         amount: currentTotalBalance,
-        confidence: 1,
         date: endDate.toISOString(),
       },
+      currency: 'GBP',
+      lastUpdated: new Date().toISOString(),
     };
   }, [
     transactions,
@@ -133,9 +139,9 @@ export const useBalanceAnalysis = (
 
 // Helper function to select appropriate chart points
 function selectChartPoints(
-  points: BalancePoint[],
-  timeRangeType: 'Month' | 'Year'
-): BalancePoint[] {
+  points: ExtendedBalancePoint[],
+  timeRangeType: TimeRange['type']
+): ExtendedBalancePoint[] {
   const targetPoints = timeRangeType === 'Month' ? 30 : 52; // Daily for month, weekly for year
 
   // Always include significant points
@@ -160,7 +166,7 @@ function selectChartPoints(
 
   // Combine and sort by date
   return [...significantPoints, ...regularPoints].sort(
-    (a, b) => a.date.getTime() - b.date.getTime()
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 }
 

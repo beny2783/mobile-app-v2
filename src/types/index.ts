@@ -97,3 +97,12 @@ export interface UserProgress {
   created_at: string;
   updated_at: string;
 }
+
+// Re-export all types from their respective domains
+export * from './auth';
+export * from './bank';
+export * from './transaction';
+export * from './challenge';
+export * from './shared';
+export * from './navigation';
+export * from './target';

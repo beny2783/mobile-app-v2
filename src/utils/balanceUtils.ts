@@ -1,33 +1,7 @@
-export interface BalanceData {
-  currentBalance: number;
-  startingBalance: number;
-  moneyIn: number;
-  moneyOut: number;
-  chartData: {
-    current: number[];
-    estimated: number[];
-    labels: string[];
-  };
-  upcomingPayments: {
-    total: number;
-    recurring: number;
-    scheduled: number;
-    date: string;
-  };
-  estimatedBalance: {
-    amount: number;
-    confidence: number;
-    date: string;
-  };
-}
+import { TimeRange } from '../types/bank/analysis';
+import { BalanceData } from '../types/bank/balance';
 
-export interface TimeRange {
-  type: 'Month' | 'Year';
-  startDate: Date;
-  endDate: Date;
-}
-
-export const getTimeRange = (type: 'Month' | 'Year'): TimeRange => {
+export const getTimeRange = (type: TimeRange['type']): TimeRange => {
   const now = new Date();
   const startDate = new Date(now.getFullYear(), type === 'Month' ? now.getMonth() : 0, 1);
   const endDate = new Date(
@@ -53,3 +27,5 @@ export const formatDate = (date: Date): string => {
     month: 'short',
   });
 };
+
+export type { BalanceData, TimeRange };

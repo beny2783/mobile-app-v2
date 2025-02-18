@@ -1,15 +1,29 @@
-import { TrueLayerConfig, TrueLayerError, TrueLayerErrorCode } from './types';
-import { Transaction } from '../../types';
+import { DatabaseTransaction } from '../../types/transaction';
+import {
+  TrueLayerError,
+  TrueLayerErrorCode,
+  ITrueLayerApiService,
+  TokenResponse,
+  BalanceResponse,
+  TrueLayerConfig,
+} from './types';
 import { authRepository } from '../../repositories/auth';
 import { TRUELAYER } from '../../constants';
-import { TrueLayerService as BaseTrueLayerService } from './index';
+import { TrueLayerApiService } from './api/TrueLayerApiService';
+import { TrueLayerStorageService } from './storage/TrueLayerStorageService';
+import { TrueLayerTransactionService } from './transaction/TrueLayerTransactionService';
 
-class TrueLayerServiceSingleton extends BaseTrueLayerService {
+class TrueLayerServiceSingleton implements ITrueLayerApiService {
   private static instance: TrueLayerServiceSingleton | null = null;
+  private apiService: TrueLayerApiService;
+  private storageService: TrueLayerStorageService;
+  private transactionService: TrueLayerTransactionService;
 
   protected constructor(config: TrueLayerConfig) {
     console.log('🔍 TrueLayer Service Creation: Using NEW implementation with separated services');
-    super(config);
+    this.storageService = new TrueLayerStorageService();
+    this.apiService = new TrueLayerApiService(config, this.storageService);
+    this.transactionService = new TrueLayerTransactionService(this.apiService, this.storageService);
   }
 
   public static getInstance(): TrueLayerServiceSingleton {
@@ -22,11 +36,27 @@ class TrueLayerServiceSingleton extends BaseTrueLayerService {
     return TrueLayerServiceSingleton.instance;
   }
 
-  override async fetchTransactionsForConnection(
+  getAuthUrl(): string {
+    return this.apiService.getAuthUrl();
+  }
+
+  async exchangeToken(code: string): Promise<TokenResponse> {
+    return this.apiService.exchangeToken(code);
+  }
+
+  async fetchTransactions(
+    token: string,
+    fromDate?: Date,
+    toDate?: Date
+  ): Promise<DatabaseTransaction[]> {
+    return this.apiService.fetchTransactions(token, fromDate, toDate);
+  }
+
+  async fetchTransactionsForConnection(
     connectionId: string,
     fromDate?: Date,
     toDate?: Date
-  ): Promise<Transaction[]> {
+  ): Promise<DatabaseTransaction[]> {
     try {
       console.log(`🔄 Fetching transactions for connection ${connectionId}`);
 
@@ -48,7 +78,7 @@ class TrueLayerServiceSingleton extends BaseTrueLayerService {
       const transactions = await this.apiService.fetchTransactions(token, fromDate, toDate);
 
       // Add connection_id to each transaction
-      const transactionsWithConnection = transactions.map((t: Transaction) => ({
+      const transactionsWithConnection = transactions.map((t: DatabaseTransaction) => ({
         ...t,
         connection_id: connectionId,
       }));
@@ -68,7 +98,21 @@ class TrueLayerServiceSingleton extends BaseTrueLayerService {
       );
     }
   }
+
+  async fetchBalances(token: string): Promise<BalanceResponse> {
+    return this.apiService.fetchBalances(token);
+  }
+
+  async refreshToken(refreshToken: string): Promise<TokenResponse> {
+    return this.apiService.refreshToken(refreshToken);
+  }
+
+  async disconnectBank(connectionId: string): Promise<void> {
+    await this.storageService.disconnectBank(connectionId);
+  }
 }
 
-// Export a function to get the singleton instance
-export const getTrueLayerService = () => TrueLayerServiceSingleton.getInstance();
+// Export singleton instance
+export const getTrueLayerService = (): ITrueLayerApiService => {
+  return TrueLayerServiceSingleton.getInstance();
+};

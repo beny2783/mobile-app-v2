@@ -1,4 +1,11 @@
-import { Transaction } from '../../types';
+import { DatabaseTransaction } from '../../types/transaction';
+import {
+  TrueLayerBalance as Balance,
+  BankAccount as Account,
+  BalanceResponse,
+} from '../../types/bank/balance';
+import { DatabaseGroupedBalances } from '../../types/bank/database';
+import { BankConnection } from '../../types/bank/connection';
 
 export interface TokenResponse {
   access_token: string;
@@ -19,50 +26,15 @@ export interface TrueLayerApiConfig {
   redirectUri: string;
 }
 
-export interface BankConnection {
-  id: string;
-  user_id: string;
-  provider: string;
-  status: string;
-  encrypted_access_token: string;
-  encrypted_refresh_token?: string;
-  expires_at: Date;
-  disconnected_at?: Date;
-  last_sync?: Date;
-  bank_name?: string;
-}
-
-export interface Balance {
-  account_id: string;
-  currency: string;
-  available: number;
-  current: number;
-  last_updated?: string;
-}
-
-export interface Account {
-  account_id: string;
-  account_type: string;
-  display_name?: string;
-  currency: string;
-}
-
-export interface BalanceResponse {
-  accounts: {
-    results: Account[];
-  };
-  balances: Balance[];
-}
-
 export interface ITrueLayerApiService {
   getAuthUrl(): string;
   exchangeToken(code: string): Promise<TokenResponse>;
-  fetchTransactions(token: string, fromDate?: Date, toDate?: Date): Promise<Transaction[]>;
+  fetchTransactions(token: string, fromDate?: Date, toDate?: Date): Promise<DatabaseTransaction[]>;
   fetchTransactionsForConnection(
     connectionId: string,
     fromDate?: Date,
     toDate?: Date
-  ): Promise<Transaction[]>;
+  ): Promise<DatabaseTransaction[]>;
   fetchBalances(token: string): Promise<BalanceResponse>;
   refreshToken(refreshToken: string): Promise<TokenResponse>;
 }
@@ -70,15 +42,18 @@ export interface ITrueLayerApiService {
 export interface ITrueLayerStorageService {
   storeTokens(userId: string, tokens: TokenResponse): Promise<string>;
   getStoredToken(userId: string, connectionId: string): Promise<string | null>;
-  storeTransactions(userId: string, transactions: Transaction[]): Promise<void>;
+  storeTransactions(userId: string, transactions: DatabaseTransaction[]): Promise<void>;
   storeBalances(userId: string, connectionId: string, balances: any): Promise<void>;
-  getActiveConnection(userId: string, connectionId?: string): Promise<BankConnection | null>;
+  getActiveConnection(
+    userId: string,
+    connectionId?: string
+  ): Promise<DatabaseGroupedBalances['connection'] | null>;
   disconnectBank(connectionId: string): Promise<void>;
 }
 
 export interface ITrueLayerTransactionService {
-  processTransactions(transactions: Transaction[]): Promise<Transaction[]>;
-  categorizeTransactions(transactions: Transaction[]): Promise<Transaction[]>;
+  processTransactions(transactions: DatabaseTransaction[]): Promise<DatabaseTransaction[]>;
+  categorizeTransactions(transactions: DatabaseTransaction[]): Promise<DatabaseTransaction[]>;
   updateTransactionHistory(userId: string, days?: number): Promise<void>;
 }
 
@@ -106,3 +81,5 @@ export enum TrueLayerErrorCode {
   STORAGE_FAILED = 'STORAGE_FAILED',
   RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
 }
+
+export { Balance, Account, BalanceResponse, BankConnection };

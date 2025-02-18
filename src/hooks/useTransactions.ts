@@ -3,10 +3,12 @@ import { useServices } from '../contexts/ServiceContext';
 import { useDataFetching } from './useDataFetching';
 import { supabase } from '../services/supabase';
 import { useBankConnections } from './useBankConnections';
-import type { Transaction } from '../types';
-import type { BankConnection } from '../services/trueLayer/types';
+import type { DatabaseTransaction } from '../types/transaction';
+import type { BankConnectionWithAccounts } from '../types/bank/connection';
 import { authRepository } from '../repositories/auth';
 import { createTransactionRepository } from '../repositories/transaction';
+import { ITrueLayerApiService } from '../services/trueLayer/types';
+import { BankConnection } from '../types/bank/connection';
 
 interface DateRange {
   from: Date;
@@ -19,7 +21,7 @@ interface MerchantCategory {
 }
 
 interface UseTransactionsResult {
-  transactions: Transaction[];
+  transactions: DatabaseTransaction[];
   loading: boolean;
   error: string | null;
   refreshing: boolean;
@@ -33,10 +35,10 @@ interface UseTransactionsResult {
   selectedBank: string | null;
   searchQuery: string;
   dateRange: DateRange;
-  bankConnections: BankConnection[];
+  bankConnections: BankConnectionWithAccounts[];
   groupedTransactions: {
     title: string;
-    data: Transaction[];
+    data: DatabaseTransaction[];
     totalAmount: number;
     bankTotals: { [key: string]: { amount: number; name: string } };
   }[];
@@ -57,9 +59,9 @@ export function useTransactions(): UseTransactionsResult {
   const [categories, setCategories] = useState<string[]>([]);
   const [merchantCategories, setMerchantCategories] = useState<MerchantCategory[]>([]);
 
-  // Create repository instance
+  // Create repository instance with type assertion
   const repository = useMemo(
-    () => createTransactionRepository(trueLayerService),
+    () => createTransactionRepository(trueLayerService as unknown as ITrueLayerApiService),
     [trueLayerService]
   );
 
@@ -131,7 +133,7 @@ export function useTransactions(): UseTransactionsResult {
     refresh,
     refreshing,
     fetch,
-  } = useDataFetching<Transaction[]>([], fetchTransactions, {
+  } = useDataFetching<DatabaseTransaction[]>([], fetchTransactions, {
     retryOnError: true,
     onSuccess: (data) => {
       console.log('✨ useTransactions: Data fetching succeeded', {
@@ -165,32 +167,6 @@ export function useTransactions(): UseTransactionsResult {
       console.error('💥 useTransactions: Error fetching categories:', err);
     }
   }, [repository]);
-
-  // Function to determine category based on merchant patterns
-  const getCategoryForTransaction = useCallback(
-    (transaction: Transaction): string => {
-      const description = (transaction.description || '').toUpperCase();
-      const merchantName = (transaction.merchant_name || '').toUpperCase();
-
-      // Try to match against merchant patterns
-      for (const { category, merchant_pattern } of merchantCategories) {
-        const patterns = merchant_pattern.split('|');
-        if (
-          patterns.some(
-            (pattern) =>
-              description.includes(pattern.toUpperCase()) ||
-              merchantName.includes(pattern.toUpperCase())
-          )
-        ) {
-          return category;
-        }
-      }
-
-      // If no match found, return the transaction type as fallback
-      return transaction.transaction_type || 'Other';
-    },
-    [merchantCategories]
-  );
 
   // Call fetchCategories on mount
   useEffect(() => {
@@ -233,13 +209,27 @@ export function useTransactions(): UseTransactionsResult {
     return filtered;
   }, [transactions, searchQuery, selectedCategory, selectedBank]);
 
+  const totals = connections.reduce(
+    (acc, connection) => {
+      const connectionTotal = connection.bank_accounts?.[0]?.count || 0;
+      return {
+        ...acc,
+        [connection.id]: {
+          total: connectionTotal,
+          bank_name: connection.provider_name || connection.provider,
+        },
+      };
+    },
+    {} as Record<string, { total: number; bank_name: string }>
+  );
+
   // Group transactions by date with bank totals
   const groupedTransactions = useMemo(() => {
     console.log('📊 useTransactions: Grouping transactions:', {
       filtered: filteredTransactions.length,
     });
 
-    const groups: { [key: string]: Transaction[] } = {};
+    const groups: { [key: string]: DatabaseTransaction[] } = {};
 
     // Sort transactions by date (newest first)
     const sortedTransactions = [...filteredTransactions].sort(
@@ -265,7 +255,7 @@ export function useTransactions(): UseTransactionsResult {
           if (!totals[bankId]) {
             totals[bankId] = {
               amount: 0,
-              name: bank?.bank_name || 'Unknown Bank',
+              name: bank?.provider_name || bank?.provider || 'Unknown Bank',
             };
           }
           totals[bankId].amount += t.amount;

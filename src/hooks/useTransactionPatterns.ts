@@ -1,30 +1,32 @@
 import { useMemo } from 'react';
-import { Transaction } from '../types';
+import { DatabaseTransaction } from '../types/transaction';
 
-interface TransactionPattern {
+export interface TransactionPattern {
   pattern: RegExp;
   amount: number;
   frequency: number; // in days
 }
 
-interface SeasonalPattern {
+export interface SeasonalPattern {
   month: number;
   adjustment: number;
 }
 
-interface ScheduledTransaction {
+export interface ScheduledTransaction {
   amount: number;
   date: Date;
 }
 
-interface TransactionPatterns {
+export interface TransactionPatterns {
   recurringTransactions: TransactionPattern[];
   recurringPayments: TransactionPattern[];
   scheduledTransactions: ScheduledTransaction[];
   seasonalPatterns: SeasonalPattern[];
 }
 
-export const useTransactionPatterns = (transactions: Transaction[]): TransactionPatterns => {
+export const useTransactionPatterns = (
+  transactions: DatabaseTransaction[]
+): TransactionPatterns => {
   return useMemo(() => {
     if (!transactions.length) {
       return {
@@ -36,7 +38,7 @@ export const useTransactionPatterns = (transactions: Transaction[]): Transaction
     }
 
     // Group transactions by description
-    const transactionGroups = new Map<string, Transaction[]>();
+    const transactionGroups = new Map<string, DatabaseTransaction[]>();
     transactions.forEach((t) => {
       const key = t.description.toLowerCase();
       const group = transactionGroups.get(key) || [];
