@@ -18,24 +18,16 @@ import { BalanceView } from '../components/BalanceView';
 import { TargetView } from '../components/TargetView';
 import { getTimeRange } from '../utils/balanceUtils';
 import { createBalanceRepository } from '../repositories/balance';
+import { DatabaseBankAccount } from '../types/bank/database';
+import { TimeRange } from '../types/bank/analysis';
+import type { Transaction } from '../types/transaction';
 
 type TabType = 'Balance' | 'Spending' | 'Target';
 
 // Initialize repository once, outside component
 const balanceRepository = createBalanceRepository();
 
-interface BankAccount {
-  id: string;
-  user_id: string;
-  connection_id: string;
-  account_id: string;
-  account_name: string;
-  account_type: string;
-  currency: string;
-  balance: number;
-  last_updated: string;
-  created_at: string;
-  updated_at: string;
+interface ExtendedBankAccount extends DatabaseBankAccount {
   bank_connection: {
     id: string;
     bank_name?: string;
@@ -43,11 +35,11 @@ interface BankAccount {
 }
 
 export default function TrendsScreen() {
-  const [timeRangeType, setTimeRangeType] = useState<'Month' | 'Year'>('Month');
+  const [timeRangeType, setTimeRangeType] = useState<TimeRange['type']>('Month');
   const [activeTab, setActiveTab] = useState<TabType>('Balance');
   const [showAccountSelector, setShowAccountSelector] = useState(false);
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<ExtendedBankAccount[]>([]);
   const { transactions, loading, error, refreshing, refresh, bankConnections } = useTransactions();
   const [spendingTimeRange, setSpendingTimeRange] = useState<'week' | 'month'>('month');
 
@@ -104,9 +96,68 @@ export default function TrendsScreen() {
     }
   }, [bankAccounts]);
 
-  const filteredTransactions = transactions.filter((t) => {
-    return selectedAccounts.has(t.connection_id);
-  });
+  const filteredTransactions = transactions
+    .filter((t) => {
+      return selectedAccounts.has(t.connection_id);
+    })
+    .map((t) => ({
+      ...t,
+      user_id: t.id, // Using id as user_id since it's required
+      account_id: t.connection_id, // Using connection_id as account_id since it's required
+      date: t.timestamp, // Using timestamp as date
+      type: (t.transaction_type === 'credit' ? 'credit' : 'debit') as 'debit' | 'credit', // Ensure correct type literal
+      created_at: t.timestamp, // Using timestamp as created_at
+      updated_at: t.timestamp, // Using timestamp as updated_at
+    }));
+
+  // Add debugging logs for transaction transformation
+  React.useEffect(() => {
+    if (transactions.length > 0) {
+      console.log('🔍 Transaction Type Debug:');
+
+      // Log original transaction
+      const originalTransaction = transactions[0];
+      console.log('Original Transaction:', {
+        ...originalTransaction,
+        _type: 'original',
+        _hasTimestamp: 'timestamp' in originalTransaction,
+        _hasDate: 'date' in originalTransaction,
+        _fields: Object.keys(originalTransaction),
+      });
+
+      // Log transformed transaction
+      const transformedTransaction = filteredTransactions[0];
+      console.log('Transformed Transaction:', {
+        ...transformedTransaction,
+        _type: 'transformed',
+        _hasTimestamp: 'timestamp' in transformedTransaction,
+        _hasDate: 'date' in transformedTransaction,
+        _fields: Object.keys(transformedTransaction),
+      });
+
+      // Log transaction counts
+      console.log('Transaction Counts:', {
+        original: transactions.length,
+        filtered: filteredTransactions.length,
+        selectedAccounts: selectedAccounts.size,
+      });
+
+      // Log type compatibility
+      console.log('Type Compatibility Check:', {
+        forSpendingView: 'date' in transformedTransaction && 'type' in transformedTransaction,
+        forBalanceAnalysis: 'timestamp' in transformedTransaction,
+        allRequiredFields: {
+          id: 'id' in transformedTransaction,
+          user_id: 'user_id' in transformedTransaction,
+          account_id: 'account_id' in transformedTransaction,
+          amount: 'amount' in transformedTransaction,
+          date: 'date' in transformedTransaction,
+          type: 'type' in transformedTransaction,
+          timestamp: 'timestamp' in transformedTransaction,
+        },
+      });
+    }
+  }, [transactions, filteredTransactions, selectedAccounts]);
 
   const spendingAnalysis = useSpendingAnalysis(filteredTransactions, spendingTimeRange);
   const balanceAnalysis = useBalanceAnalysis(
@@ -119,6 +170,21 @@ export default function TrendsScreen() {
         balance: acc.balance,
       }))
   );
+
+  // Add debugging logs for analysis results
+  React.useEffect(() => {
+    if (spendingAnalysis) {
+      console.log('📊 Spending Analysis Debug:', {
+        totalTransactions: filteredTransactions.length,
+        categories: spendingAnalysis.categories.map((c) => ({
+          name: c.name,
+          amount: c.amount,
+        })),
+        timeRange: spendingTimeRange,
+      });
+    }
+  }, [spendingAnalysis, filteredTransactions.length, spendingTimeRange]);
+
   const timeRange = getTimeRange(timeRangeType);
 
   const toggleAccount = (connectionId: string) => {

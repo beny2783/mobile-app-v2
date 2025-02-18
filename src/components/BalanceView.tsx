@@ -1,19 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
-import { BalanceData, TimeRange, formatCurrency, formatDate } from '../utils/balanceUtils';
+import { formatCurrency, formatDate } from '../utils/balanceUtils';
 import { colors } from '../constants/theme';
+import { TimeRange, BalanceAnalysisData } from '../types/bank/analysis';
 
 const { width } = Dimensions.get('window');
 
 interface BalanceViewProps {
-  data: BalanceData;
+  data: BalanceAnalysisData;
   timeRange: TimeRange;
-  onTimeRangeChange: (type: 'Month' | 'Year') => void;
+  onTimeRangeChange: (type: TimeRange['type']) => void;
 }
 
 export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTimeRangeChange }) => {
+  useEffect(() => {
+    console.log('🏦 BalanceView - Using new types:');
+    console.log('Data:', {
+      currentBalance: data.currentBalance,
+      startingBalance: data.startingBalance,
+      timeRange: {
+        type: timeRange.type,
+        startDate: timeRange.startDate,
+        endDate: timeRange.endDate,
+      },
+    });
+  }, [data, timeRange]);
+
   const [selectedPoint, setSelectedPoint] = useState<{
     value: number;
     date: string;
