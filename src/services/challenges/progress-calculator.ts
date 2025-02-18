@@ -18,16 +18,27 @@ export class ChallengeProgressCalculator {
     challenge: Challenge,
     transactions: Transaction[]
   ): ProgressResult {
-    if (challenge.criteria.type === 'no_spend') {
-      return this.calculateNoSpendProgress(challenge, transactions);
+    switch (challenge.criteria.type) {
+      case 'no_spend':
+        return this.calculateNoSpendProgress(challenge, transactions);
+      case 'reduced_spending':
+        return this.calculateReducedSpendingProgress(challenge.criteria, transactions);
+      case 'savings':
+        return this.calculateSavingsProgress(challenge.criteria, transactions);
+      case 'streak':
+        return this.calculateStreakProgress(userChallenge, challenge.criteria);
+      case 'category_budget':
+        return this.calculateCategoryBudgetProgress(transactions);
+      case 'smart_shopping':
+        return this.calculateSmartShoppingProgress(challenge.criteria, transactions);
+      default:
+        // Default response for unknown challenge types
+        return {
+          isCompleted: false,
+          isFailed: false,
+          progress: { total_spent: 0 },
+        };
     }
-
-    // Default response for unknown challenge types
-    return {
-      isCompleted: false,
-      isFailed: false,
-      progress: { total_spent: 0 },
-    };
   }
 
   private calculateNoSpendProgress(

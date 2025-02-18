@@ -426,6 +426,68 @@ GRANT ALL ON TABLE public.transactions TO service_role;
 
 
 --
+-- Name: merchant_categories; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.merchant_categories (
+    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    merchant_pattern text NOT NULL,
+    category text NOT NULL,
+    user_id uuid references auth.users(id),
+    created_at timestamptz DEFAULT now() NOT NULL,
+    
+    -- Ensure unique patterns per user (or system-wide)
+    UNIQUE(merchant_pattern, user_id)
+);
+
+--
+-- Name: merchant_categories merchant_categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merchant_categories
+    ADD CONSTRAINT merchant_categories_pkey PRIMARY KEY (id);
+
+--
+-- Name: merchant_categories Users can view system categories and their own; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Users can view system categories and their own" 
+ON public.merchant_categories FOR SELECT TO authenticated 
+USING (user_id IS NULL OR auth.uid() = user_id);
+
+--
+-- Name: merchant_categories Users can insert their own categories; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Users can insert their own categories" 
+ON public.merchant_categories FOR INSERT TO authenticated 
+WITH CHECK (auth.uid() = user_id);
+
+--
+-- Name: merchant_categories Users can update their own categories; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Users can update their own categories" 
+ON public.merchant_categories FOR UPDATE TO authenticated 
+USING (auth.uid() = user_id) 
+WITH CHECK (auth.uid() = user_id);
+
+--
+-- Name: merchant_categories; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.merchant_categories ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: TABLE merchant_categories; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.merchant_categories TO anon;
+GRANT ALL ON TABLE public.merchant_categories TO authenticated;
+GRANT ALL ON TABLE public.merchant_categories TO service_role;
+
+
+--
 -- PostgreSQL database dump complete
 --
 

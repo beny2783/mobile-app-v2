@@ -36,24 +36,72 @@ export class SupabaseTransactionRepository implements TransactionRepository {
       const user = await authRepository.getUser();
       console.log('[TransactionRepository] Fetching categories for user:', user?.id);
 
+      // Debug: Log the Supabase client auth state
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      console.log(
+        '[TransactionRepository] Supabase auth session:',
+        session ? 'Session exists' : 'No session',
+        'Access token:',
+        session?.access_token ? 'Present' : 'Missing'
+      );
+
+      // Debug: Try a simpler query first
+      const { data: simpleData, error: simpleError } = await supabase
+        .from('merchant_categories')
+        .select('category')
+        .limit(1);
+
+      console.log('[TransactionRepository] Simple query test:', {
+        success: !!simpleData,
+        error: simpleError?.message,
+        data: simpleData,
+      });
+
       let query = supabase.from('merchant_categories').select('category, merchant_pattern');
 
       if (user) {
+        // Debug: Try to get system categories first
+        const { data: systemCategories, error: systemError } = await supabase
+          .from('merchant_categories')
+          .select('category, merchant_pattern')
+          .is('user_id', null);
+
+        console.log('[TransactionRepository] System categories query:', {
+          success: !!systemCategories,
+          error: systemError?.message,
+          count: systemCategories?.length || 0,
+        });
+
         query = query.or(`user_id.is.null,user_id.eq.${user.id}`);
+        console.log('[TransactionRepository] Query includes user-specific categories');
       } else {
         query = query.is('user_id', null);
+        console.log('[TransactionRepository] Query only includes system categories');
       }
 
       const { data, error } = await query;
 
-      if (error) throw this.handleError(error);
+      if (error) {
+        console.error('[TransactionRepository] Error fetching categories:', error);
+        throw this.handleError(error);
+      }
 
       this.merchantCategories = data || [];
+      console.log(
+        '[TransactionRepository] Merchant categories loaded:',
+        this.merchantCategories.map((c) => ({
+          category: c.category,
+          pattern: c.merchant_pattern,
+        }))
+      );
       console.log(
         `[TransactionRepository] Found ${this.merchantCategories.length} merchant categories`
       );
       return this.merchantCategories;
     } catch (error) {
+      console.error('[TransactionRepository] Failed to fetch merchant categories:', error);
       throw this.handleError(error);
     }
   }

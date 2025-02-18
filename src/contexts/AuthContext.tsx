@@ -82,8 +82,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await authRepository.signIn(email, password);
       await checkUser();
+      setError(null); // Clear any previous errors on success
     } catch (error: any) {
       console.error('[AuthContext] Email sign in failed:', error);
+      setError(error.message || 'Sign in failed');
       throw error;
     }
   };
@@ -92,8 +94,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('[AuthContext] Attempting test user sign in...');
     try {
       await signInWithEmail('test@example.com', 'testpass123');
-    } catch (error) {
+      setError(null); // Clear any previous errors on success
+    } catch (error: any) {
       console.error('[AuthContext] Test user sign in failed:', error);
+      setError(error.message || 'Test user sign in failed');
       throw error;
     }
   };

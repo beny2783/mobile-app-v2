@@ -21,7 +21,11 @@ jest.mock('@react-navigation/native', () => ({
 
 describe('CallbackScreen', () => {
   const mockTrueLayerService = {
-    exchangeCode: jest.fn(),
+    exchangeCode: jest.fn().mockResolvedValue({
+      access_token: 'test-token',
+      refresh_token: 'test-refresh-token',
+      expires_in: 3600,
+    }),
   };
 
   beforeEach(() => {
@@ -50,6 +54,9 @@ describe('CallbackScreen', () => {
 
     await waitFor(() => {
       expect(mockTrueLayerService.exchangeCode).toHaveBeenCalledWith('test-code');
+    });
+
+    await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('Home', { success: true });
     });
   });
@@ -78,6 +85,10 @@ describe('CallbackScreen', () => {
     mockTrueLayerService.exchangeCode.mockRejectedValue(mockError);
 
     render(<CallbackScreen />);
+
+    await waitFor(() => {
+      expect(mockTrueLayerService.exchangeCode).toHaveBeenCalledWith('invalid-code');
+    });
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('Home', {
@@ -112,7 +123,7 @@ describe('CallbackScreen', () => {
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('ConnectBank', {
-        error: expect.any(String),
+        error: 'Invalid URL: invalid-url',
       });
     });
   });
