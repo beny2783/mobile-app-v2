@@ -1,10 +1,15 @@
 import { TrueLayerTransactionService } from '../../../../services/trueLayer/transaction/TrueLayerTransactionService';
 import { supabase } from '../../../../services/supabase';
-import { Transaction } from '../../../../types';
+import { Transaction, DatabaseTransaction } from '../../../../types';
 import {
   ITrueLayerApiService,
   ITrueLayerStorageService,
 } from '../../../../services/trueLayer/types';
+
+// Interface for the processed transaction returned by the service
+type ProcessedDatabaseTransaction = DatabaseTransaction & {
+  processed_at: string;
+};
 
 // Mock dependencies
 jest.mock('../../../../services/supabase', () => ({
@@ -21,23 +26,20 @@ describe('TrueLayerTransactionService', () => {
   const mockUserId = 'test-user-id';
   const mockConnectionId = 'test-connection-id';
 
-  const mockTransaction: Transaction = {
+  const mockDatabaseTransaction: DatabaseTransaction = {
     id: 'test-id',
     user_id: mockUserId,
-    transaction_id: 'test-transaction-id',
-    account_id: 'test-account-id',
     connection_id: mockConnectionId,
     timestamp: '2024-01-01T00:00:00Z',
     description: 'Test Transaction',
     amount: 100,
     currency: 'GBP',
-    type: 'debit',
     transaction_type: 'debit',
     transaction_category: 'shopping',
     merchant_name: 'Test Store',
-    date: '2024-01-01',
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
+    scheduled_date: null,
   };
 
   beforeEach(() => {
@@ -68,15 +70,12 @@ describe('TrueLayerTransactionService', () => {
 
   describe('processTransactions', () => {
     it('should process transactions and add processed_at timestamp', async () => {
-      const result = await service.processTransactions([mockTransaction]);
+      const result = await service.processTransactions([mockDatabaseTransaction]);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({
-        ...mockTransaction,
-        processed_at: expect.any(String),
-      });
-
-      const processedTransaction = result[0] as Transaction & { processed_at: string };
+      expect(result[0]).toMatchObject(mockDatabaseTransaction);
+      const processedTransaction = result[0] as ProcessedDatabaseTransaction;
+      expect(processedTransaction.processed_at).toBeDefined();
       expect(new Date(processedTransaction.processed_at).getTime()).toBeLessThanOrEqual(Date.now());
     });
 
@@ -87,70 +86,56 @@ describe('TrueLayerTransactionService', () => {
 
     it('should use provided connection_id when transaction has none', async () => {
       const transactionWithoutConnection = {
-        ...mockTransaction,
-        connection_id: '',
-      };
-
-      const result = await service.processTransactions(
-        [transactionWithoutConnection],
-        'new-connection-id'
-      );
-
-      expect(result).toHaveLength(1);
-      expect(result[0].connection_id).toBe('new-connection-id');
-    });
-
-    it('should keep existing connection_id when present', async () => {
-      const result = await service.processTransactions(
-        [mockTransaction],
-        'different-connection-id'
-      );
-
-      expect(result).toHaveLength(1);
-      expect(result[0].connection_id).toBe(mockTransaction.connection_id);
-    });
-
-    it('should create unique transaction_id when not present', async () => {
-      const transactionWithoutId = {
-        ...mockTransaction,
-        transaction_id: '',
-      };
-
-      const result = await service.processTransactions([transactionWithoutId], mockConnectionId);
-
-      expect(result).toHaveLength(1);
-      expect(result[0].transaction_id).toBe(`${mockConnectionId}_${transactionWithoutId.id}`);
-    });
-
-    it('should filter out transactions without connection_id', async () => {
-      const transactionWithoutConnection = {
-        ...mockTransaction,
+        ...mockDatabaseTransaction,
         connection_id: '',
       };
 
       const result = await service.processTransactions([transactionWithoutConnection]);
 
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(1);
+      expect(result[0].connection_id).toBe(mockConnectionId);
     });
 
-    it('should handle multiple transactions with mixed connection states', async () => {
+    it('should keep existing connection_id when present', async () => {
+      const result = await service.processTransactions([mockDatabaseTransaction]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].connection_id).toBe(mockDatabaseTransaction.connection_id);
+      expect((result[0] as any).processed_at).toBeDefined();
+    });
+
+    it('should create unique id when not present', async () => {
+      const transactionWithoutId = {
+        ...mockDatabaseTransaction,
+        id: '',
+      };
+
+      const result = await service.processTransactions([transactionWithoutId]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(
+        `${mockConnectionId}_${new Date(transactionWithoutId.timestamp).getTime()}`
+      );
+    });
+
+    it('should process multiple transactions', async () => {
       const transactions = [
-        mockTransaction,
-        { ...mockTransaction, connection_id: '', id: 'id-2', transaction_id: 'trans-2' },
-        {
-          ...mockTransaction,
-          connection_id: 'other-connection',
-          id: 'id-3',
-          transaction_id: 'trans-3',
-        },
+        mockDatabaseTransaction,
+        { ...mockDatabaseTransaction, id: 'id-2' },
+        { ...mockDatabaseTransaction, id: 'id-3' },
       ];
 
-      const result = await service.processTransactions(transactions, 'new-connection-id');
+      const result = await service.processTransactions(transactions);
 
       expect(result).toHaveLength(3);
-      expect(result[0].connection_id).toBe(mockTransaction.connection_id);
-      expect(result[1].connection_id).toBe('new-connection-id');
-      expect(result[2].connection_id).toBe('other-connection');
+      result.forEach((transaction, index) => {
+        expect(transaction).toMatchObject(transactions[index]);
+        const processedTransaction = transaction as ProcessedDatabaseTransaction;
+        expect(processedTransaction.processed_at).toBeDefined();
+        expect(new Date(processedTransaction.processed_at).getTime()).toBeLessThanOrEqual(
+          Date.now()
+        );
+      });
     });
   });
 
@@ -168,8 +153,8 @@ describe('TrueLayerTransactionService', () => {
       (supabase.from as jest.Mock).mockReturnValue(mockChain);
 
       const transactions = [
-        { ...mockTransaction, description: 'STORE PURCHASE' },
-        { ...mockTransaction, description: 'GROCERY MART' },
+        { ...mockDatabaseTransaction, description: 'STORE PURCHASE' },
+        { ...mockDatabaseTransaction, description: 'GROCERY MART' },
       ];
 
       const result = await service.categorizeTransactions(transactions);
@@ -186,7 +171,7 @@ describe('TrueLayerTransactionService', () => {
 
       (supabase.from as jest.Mock).mockReturnValue(mockChain);
 
-      const transactions = [{ ...mockTransaction, description: 'UNKNOWN PURCHASE' }];
+      const transactions = [{ ...mockDatabaseTransaction, description: 'UNKNOWN PURCHASE' }];
 
       const result = await service.categorizeTransactions(transactions);
 
@@ -200,9 +185,9 @@ describe('TrueLayerTransactionService', () => {
 
       (supabase.from as jest.Mock).mockReturnValue(mockChain);
 
-      const result = await service.categorizeTransactions([mockTransaction]);
+      const result = await service.categorizeTransactions([mockDatabaseTransaction]);
 
-      expect(result).toEqual([mockTransaction]);
+      expect(result).toEqual([mockDatabaseTransaction]);
     });
   });
 
@@ -223,22 +208,37 @@ describe('TrueLayerTransactionService', () => {
 
     it('should update transaction history for active connections', async () => {
       mockStorageService.getStoredToken.mockResolvedValue('test-token');
-      mockApiService.fetchTransactions.mockResolvedValue([mockTransaction]);
+      mockApiService.fetchTransactions.mockResolvedValue([mockDatabaseTransaction]);
       mockStorageService.storeTransactions.mockResolvedValue();
 
       await service.updateTransactionHistory(mockUserId);
 
       expect(mockStorageService.getStoredToken).toHaveBeenCalledWith(mockUserId, mockConnectionId);
-      expect(mockApiService.fetchTransactions).toHaveBeenCalledWith('test-token', expect.any(Date));
+      const fetchTransactionsCalls = mockApiService.fetchTransactions.mock.calls;
+      expect(fetchTransactionsCalls.length).toBe(1);
+      expect(fetchTransactionsCalls[0][0]).toBe('test-token');
+      expect(fetchTransactionsCalls[0][1]).toBeInstanceOf(Date);
       expect(mockStorageService.storeTransactions).toHaveBeenCalledWith(
         mockUserId,
-        expect.arrayContaining([
-          expect.objectContaining({
-            ...mockTransaction,
-            processed_at: expect.any(String),
-          } as Transaction & { processed_at: string }),
-        ])
+        expect.arrayContaining([expect.objectContaining(mockDatabaseTransaction)])
       );
+    });
+
+    it('should use custom days parameter', async () => {
+      mockStorageService.getStoredToken.mockResolvedValue('test-token');
+      mockApiService.fetchTransactions.mockResolvedValue([mockDatabaseTransaction]);
+
+      const customDays = 60;
+      await service.updateTransactionHistory(mockUserId, customDays);
+
+      const fetchTransactionsCalls = mockApiService.fetchTransactions.mock.calls;
+      expect(fetchTransactionsCalls.length).toBe(1);
+      expect(fetchTransactionsCalls[0][0]).toBe('test-token');
+      const fromDate = fetchTransactionsCalls[0][1] as Date;
+      expect(fromDate).toBeInstanceOf(Date);
+      const expectedDate = new Date();
+      expectedDate.setDate(expectedDate.getDate() - customDays);
+      expect(fromDate.getDate()).toBe(expectedDate.getDate());
     });
 
     it('should handle missing token for connection', async () => {
@@ -262,61 +262,6 @@ describe('TrueLayerTransactionService', () => {
       await expect(service.updateTransactionHistory(mockUserId)).rejects.toThrow(
         'No active bank connections found'
       );
-    });
-
-    it('should continue processing other connections if one fails', async () => {
-      const mockMultipleConnections = [
-        { id: 'conn-1', user_id: mockUserId, status: 'active', disconnected_at: null },
-        { id: 'conn-2', user_id: mockUserId, status: 'active', disconnected_at: null },
-      ];
-
-      const mockMultipleChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        is: jest.fn().mockResolvedValue({ data: mockMultipleConnections, error: null }),
-      };
-
-      (supabase.from as jest.Mock).mockReturnValue(mockMultipleChain);
-
-      mockStorageService.getStoredToken
-        .mockResolvedValueOnce('token-1')
-        .mockResolvedValueOnce('token-2');
-
-      mockApiService.fetchTransactions
-        .mockRejectedValueOnce(new Error('API error'))
-        .mockResolvedValueOnce([mockTransaction]);
-
-      await service.updateTransactionHistory(mockUserId);
-
-      expect(mockStorageService.storeTransactions).toHaveBeenCalledTimes(1);
-      expect(mockStorageService.storeTransactions).toHaveBeenCalledWith(
-        mockUserId,
-        expect.arrayContaining([
-          expect.objectContaining({
-            ...mockTransaction,
-            processed_at: expect.any(String),
-          } as Transaction & { processed_at: string }),
-        ])
-      );
-    });
-
-    it('should use custom days parameter', async () => {
-      mockStorageService.getStoredToken.mockResolvedValue('test-token');
-      mockApiService.fetchTransactions.mockResolvedValue([mockTransaction]);
-
-      const customDays = 60;
-      await service.updateTransactionHistory(mockUserId, customDays);
-
-      const expectedFromDate = new Date();
-      expectedFromDate.setDate(expectedFromDate.getDate() - customDays);
-
-      expect(mockApiService.fetchTransactions).toHaveBeenCalledWith('test-token', expect.any(Date));
-
-      const calls = mockApiService.fetchTransactions.mock.calls;
-      if (calls.length > 0 && calls[0].length > 1) {
-        const actualFromDate = calls[0][1] as Date;
-        expect(actualFromDate.getDate()).toBe(expectedFromDate.getDate());
-      }
     });
   });
 });

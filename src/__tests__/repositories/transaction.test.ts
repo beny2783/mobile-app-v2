@@ -1,7 +1,7 @@
 import { SupabaseTransactionRepository } from '../../repositories/transaction';
 import { supabase } from '../../services/supabase';
 import { authRepository } from '../../repositories/auth';
-import { Transaction } from '../../types';
+import { Transaction, DatabaseTransaction } from '../../types';
 import {
   TransactionFilters,
   RepositoryErrorCode,
@@ -37,17 +37,20 @@ describe('SupabaseTransactionRepository', () => {
   const mockUserId = 'test-user-id';
   const mockConnectionId = 'test-connection-id';
 
-  const mockTransaction: Transaction = {
-    transaction_id: 'test-transaction-id',
-    account_id: 'test-account-id',
-    connection_id: 'test-connection-id',
+  const mockTransaction: DatabaseTransaction = {
+    id: 'test-transaction-id',
+    user_id: mockUserId,
+    connection_id: mockConnectionId,
     timestamp: '2024-01-01T00:00:00Z',
     description: 'Test Transaction',
     amount: 100,
     currency: 'GBP',
     transaction_type: 'debit',
-    transaction_category: 'Shopping',
+    transaction_category: 'shopping',
     merchant_name: 'Test Store',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+    scheduled_date: null,
   };
 
   const mockMerchantCategories = [
@@ -249,11 +252,11 @@ describe('SupabaseTransactionRepository', () => {
 
       (supabase.from as jest.Mock).mockReturnValue(mockChain);
 
-      const result = await repository.getTransactionById(mockTransaction.transaction_id);
+      const result = await repository.getTransactionById(mockTransaction.id);
 
       expect(result).toEqual(mockTransaction);
       expect(supabase.from).toHaveBeenCalledWith('transactions');
-      expect(mockChain.eq).toHaveBeenCalledWith('transaction_id', mockTransaction.transaction_id);
+      expect(mockChain.eq).toHaveBeenCalledWith('id', mockTransaction.id);
     });
 
     it('should return null for non-existent transaction', async () => {
@@ -313,11 +316,11 @@ describe('SupabaseTransactionRepository', () => {
 
       (supabase.from as jest.Mock).mockReturnValue(mockChain);
 
-      await repository.updateTransactionCategory(mockTransaction.transaction_id, 'groceries');
+      await repository.updateTransactionCategory(mockTransaction.id, 'groceries');
 
       expect(supabase.from).toHaveBeenCalledWith('transactions');
       expect(mockChain.update).toHaveBeenCalledWith({ transaction_category: 'groceries' });
-      expect(mockChain.eq).toHaveBeenCalledWith('transaction_id', mockTransaction.transaction_id);
+      expect(mockChain.eq).toHaveBeenCalledWith('id', mockTransaction.id);
     });
   });
 
