@@ -519,15 +519,15 @@
     - [x] Transaction interfaces
   - [ ] Add unit tests for repositories
 
-- [ ] Type System Organization
+- [x] Type System Organization
 
-  - [ ] Create dedicated `types` directory
-  - [ ] Organize types by domain
-    - [ ] Auth types
-    - [ ] Bank types
-    - [ ] Transaction types
-    - [ ] Challenge types
-  - [ ] Implement shared interfaces
+  - [x] Create dedicated `types` directory
+  - [x] Organize types by domain
+    - [x] Auth types (`src/types/auth/index.ts`)
+    - [x] Bank types (`src/types/bank/balance.ts`, `src/types/bank/connection.ts`, `src/types/bank/database.ts`, `src/types/bank/analysis.ts`)
+    - [x] Transaction types (`src/types/transaction/index.ts`, `src/types/transaction/insights.ts`)
+    - [x] Challenge types (`src/types/challenge/index.ts`)
+  - [x] Implement shared interfaces (`src/types/shared/index.ts`)
   - [ ] Add proper type documentation
 
 - [ ] Business Logic Separation
