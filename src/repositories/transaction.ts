@@ -272,18 +272,100 @@ export class SupabaseTransactionRepository implements TransactionRepository {
         throw this.handleError(new Error('Transaction not found'));
       }
 
-      // Update both category fields to ensure consistency
-      const { error: updateError } = await supabase
-        .from('transactions')
-        .update({
-          transaction_category: category,
-          transaction_type: category, // Update the TrueLayer field as well
-        })
-        .eq('transaction_id', transactionId);
+      // Get the current user
+      const user = await authRepository.getUser();
+      if (!user) {
+        throw this.handleError(new Error('No authenticated user found'));
+      }
 
-      if (updateError) throw this.handleError(updateError);
+      const merchantPattern = transaction.merchant_name || transaction.description;
+      if (merchantPattern) {
+        console.log(`[TransactionRepository] Processing merchant pattern: "${merchantPattern}"`);
 
-      console.log('[TransactionRepository] Successfully updated transaction category');
+        // Use the atomic update_merchant_pattern function
+        const { error: updateError } = await supabase.rpc('update_merchant_pattern', {
+          p_merchant_pattern: merchantPattern,
+          p_category: category,
+          p_user_id: user.id,
+        });
+
+        if (updateError) {
+          console.error('[TransactionRepository] Pattern update failed:', {
+            error: updateError,
+            errorMessage: updateError.message,
+            details: updateError.details,
+            hint: updateError.hint,
+          });
+          throw this.handleError(updateError);
+        }
+
+        // Verify final state
+        const { data: finalPatterns, error: verifyError } = await supabase
+          .from('merchant_categories')
+          .select('*')
+          .eq('merchant_pattern', merchantPattern)
+          .eq('user_id', user.id);
+
+        if (verifyError) {
+          console.error('[TransactionRepository] Final verification failed:', verifyError);
+        } else {
+          console.log('[TransactionRepository] Final state:', {
+            patternCount: finalPatterns?.length || 0,
+            patterns: finalPatterns,
+          });
+          if (finalPatterns && finalPatterns.length > 1) {
+            console.error('[TransactionRepository] Warning: Found multiple patterns after update');
+          }
+        }
+
+        // Update all matching transactions
+        const { data: updatedTransactions, error: bulkUpdateError } = await supabase
+          .from('transactions')
+          .update({
+            transaction_category: category,
+            transaction_type: category,
+          })
+          .eq('user_id', user.id)
+          .eq('merchant_name', merchantPattern)
+          .select();
+
+        if (bulkUpdateError) {
+          console.error('[TransactionRepository] Transaction update failed:', bulkUpdateError);
+          throw this.handleError(bulkUpdateError);
+        } else {
+          console.log('[TransactionRepository] Updated transactions:', {
+            count: updatedTransactions?.length || 0,
+          });
+        }
+
+        // Also update transactions matching the description
+        const { data: updatedByDesc, error: descUpdateError } = await supabase
+          .from('transactions')
+          .update({
+            transaction_category: category,
+            transaction_type: category,
+          })
+          .eq('user_id', user.id)
+          .eq('description', merchantPattern)
+          .select();
+
+        if (descUpdateError) {
+          console.error(
+            '[TransactionRepository] Description-based update failed:',
+            descUpdateError
+          );
+          throw this.handleError(descUpdateError);
+        } else {
+          console.log('[TransactionRepository] Updated transactions by description:', {
+            count: updatedByDesc?.length || 0,
+          });
+        }
+      }
+
+      // Refresh merchant categories cache
+      await this.getMerchantCategories();
+
+      console.log('[TransactionRepository] Category update completed');
     } catch (error) {
       throw this.handleError(error);
     }
