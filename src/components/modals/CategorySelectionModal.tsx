@@ -8,6 +8,8 @@ import {
   ScrollView,
   SafeAreaView,
   Dimensions,
+  TextInput,
+  Alert,
 } from 'react-native';
 
 interface CategorySelectionModalProps {
@@ -30,18 +32,40 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
   isUpdating = false,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>(currentCategory);
+  const [customCategory, setCustomCategory] = useState<string>('');
+  const [isCustom, setIsCustom] = useState(false);
 
   const handleConfirm = async () => {
-    if (selectedCategory === currentCategory) {
+    const categoryToUse = isCustom ? customCategory : selectedCategory;
+    if (categoryToUse === currentCategory || (isCustom && !customCategory.trim())) {
       onClose();
       return;
     }
 
-    try {
-      await onConfirm(selectedCategory);
-    } catch (error) {
-      console.error('Failed to update category:', error);
-    }
+    // Show confirmation dialog
+    Alert.alert(
+      'Update All Similar Transactions?',
+      `This will update all transactions from "${transactionDescription}" to the category "${categoryToUse}". This helps keep your categories consistent.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Update All',
+          style: 'default',
+          onPress: async () => {
+            try {
+              await onConfirm(categoryToUse);
+            } catch (error) {
+              console.error('Failed to update category:', error);
+              Alert.alert('Error', 'Failed to update transaction category. Please try again.');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   return (
@@ -57,6 +81,20 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
             </Text>
           </View>
 
+          {/* Custom Category Input */}
+          <View style={styles.customInputContainer}>
+            <TextInput
+              style={styles.customInput}
+              placeholder="Add a new category..."
+              value={customCategory}
+              onChangeText={(text) => {
+                setCustomCategory(text);
+                setIsCustom(true);
+              }}
+              onFocus={() => setIsCustom(true)}
+            />
+          </View>
+
           {/* Categories List */}
           <ScrollView style={styles.categoriesList} showsVerticalScrollIndicator={false}>
             {availableCategories.map((category) => (
@@ -64,15 +102,18 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
                 key={category}
                 style={[
                   styles.categoryItem,
-                  selectedCategory === category && styles.selectedCategory,
+                  !isCustom && selectedCategory === category && styles.selectedCategory,
                 ]}
-                onPress={() => setSelectedCategory(category)}
+                onPress={() => {
+                  setSelectedCategory(category);
+                  setIsCustom(false);
+                }}
                 disabled={isUpdating}
               >
                 <Text
                   style={[
                     styles.categoryText,
-                    selectedCategory === category && styles.selectedCategoryText,
+                    !isCustom && selectedCategory === category && styles.selectedCategoryText,
                   ]}
                 >
                   {category}
@@ -93,7 +134,11 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
             <TouchableOpacity
               style={[styles.button, styles.confirmButton]}
               onPress={handleConfirm}
-              disabled={isUpdating || selectedCategory === currentCategory}
+              disabled={
+                isUpdating ||
+                (!isCustom && selectedCategory === currentCategory) ||
+                (isCustom && !customCategory.trim())
+              }
             >
               <Text style={[styles.buttonText, styles.confirmButtonText]}>
                 {isUpdating ? 'Updating...' : 'Confirm'}
@@ -135,6 +180,22 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: '#666',
+  },
+  customInputContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  customInput: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    color: '#374151',
+    backgroundColor: '#f9fafb',
   },
   categoriesList: {
     maxHeight: '60%',

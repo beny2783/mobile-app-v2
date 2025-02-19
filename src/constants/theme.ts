@@ -11,6 +11,8 @@ export const colors = {
   border: '#1C3A52',
   success: '#25B970',
   error: '#FF4444',
+  warning: '#FFB020',
+  card: '#0E2339',
 };
 
 export const spacing = {

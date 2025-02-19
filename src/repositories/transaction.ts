@@ -135,7 +135,14 @@ export class SupabaseTransactionRepository implements TransactionRepository {
       }
     }
 
-    return transaction.transaction_type || 'Other';
+    // Don't use CREDIT/DEBIT as categories as they don't indicate the transaction purpose
+    const defaultCategory = 'Uncategorized';
+    const transactionType = transaction.transaction_type?.toUpperCase();
+    if (!transactionType || transactionType === 'CREDIT' || transactionType === 'DEBIT') {
+      return defaultCategory;
+    }
+
+    return transaction.transaction_type || defaultCategory;
   }
 
   async getTransactions(filters: TransactionFilters): Promise<DatabaseTransaction[]> {

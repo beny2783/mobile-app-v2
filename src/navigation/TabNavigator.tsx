@@ -5,6 +5,7 @@ import TransactionsScreen from '../screens/TransactionsScreen';
 import ChallengesScreen from '../screens/ChallengesScreen';
 import CallbackScreen from '../screens/CallbackScreen';
 import TrendsScreen from '../screens/TrendsScreen';
+import BudgetScreen from '../screens/BudgetScreen';
 import { colors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { AppTabParamList } from '../types/navigation';
@@ -49,6 +50,16 @@ export function TabNavigator() {
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="list-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Budget"
+        component={BudgetScreen}
+        options={{
+          title: 'Budget',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="wallet-outline" size={size} color={color} />
           ),
         }}
       />

@@ -27,6 +27,8 @@ export interface CategoryTarget {
   color: string;
   min_limit: number;
   max_limit: number;
+  period: TargetPeriod;
+  period_start: string;
   created_at: string;
   updated_at: string;
 }

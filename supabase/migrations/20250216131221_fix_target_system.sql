@@ -28,6 +28,8 @@ CREATE TABLE category_targets (
     color TEXT NOT NULL,
     min_limit DECIMAL NOT NULL CHECK (min_limit >= 0),
     max_limit DECIMAL NOT NULL CHECK (max_limit >= min_limit),
+    period target_period NOT NULL DEFAULT 'monthly',
+    period_start TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT date_trunc('month', CURRENT_DATE),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     CONSTRAINT unique_user_category UNIQUE(user_id, category)
@@ -151,3 +153,93 @@ CREATE POLICY "Users can update their own daily spending"
     ON daily_spending FOR UPDATE
     USING (auth.uid() = user_id)
     WITH CHECK (auth.uid() = user_id);
+
+-- Create function to update category target amounts with period support
+CREATE OR REPLACE FUNCTION update_category_target_amount()
+RETURNS TRIGGER AS $$
+DECLARE
+    target_record RECORD;
+    period_start_date TIMESTAMP WITH TIME ZONE;
+BEGIN
+    -- For inserts and updates
+    IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND NEW.transaction_category != OLD.transaction_category) THEN
+        -- Get the category target record
+        SELECT * INTO target_record
+        FROM category_targets
+        WHERE user_id = NEW.user_id AND category = NEW.transaction_category;
+
+        IF FOUND THEN
+            -- Calculate period start based on target period
+            period_start_date := CASE target_record.period
+                WHEN 'daily' THEN date_trunc('day', CURRENT_DATE)
+                WHEN 'weekly' THEN date_trunc('week', CURRENT_DATE)
+                WHEN 'monthly' THEN date_trunc('month', CURRENT_DATE)
+                WHEN 'yearly' THEN date_trunc('year', CURRENT_DATE)
+            END;
+
+            -- Update period_start if it's a new period
+            IF period_start_date > target_record.period_start THEN
+                UPDATE category_targets
+                SET period_start = period_start_date,
+                    current_amount = 0
+                WHERE id = target_record.id;
+            END IF;
+
+            -- Update the new category target amount
+            UPDATE category_targets
+            SET current_amount = COALESCE(
+                (
+                    SELECT SUM(amount)
+                    FROM transactions
+                    WHERE user_id = NEW.user_id
+                    AND transaction_category = NEW.transaction_category
+                    AND timestamp >= period_start_date
+                ),
+                0
+            )
+            WHERE id = target_record.id;
+        END IF;
+    END IF;
+
+    -- For updates where category changed, also update old category
+    IF TG_OP = 'UPDATE' AND NEW.transaction_category != OLD.transaction_category THEN
+        -- Get the old category target record
+        SELECT * INTO target_record
+        FROM category_targets
+        WHERE user_id = OLD.user_id AND category = OLD.transaction_category;
+
+        IF FOUND THEN
+            -- Calculate period start based on target period
+            period_start_date := CASE target_record.period
+                WHEN 'daily' THEN date_trunc('day', CURRENT_DATE)
+                WHEN 'weekly' THEN date_trunc('week', CURRENT_DATE)
+                WHEN 'monthly' THEN date_trunc('month', CURRENT_DATE)
+                WHEN 'yearly' THEN date_trunc('year', CURRENT_DATE)
+            END;
+
+            -- Update the old category target amount
+            UPDATE category_targets
+            SET current_amount = COALESCE(
+                (
+                    SELECT SUM(amount)
+                    FROM transactions
+                    WHERE user_id = OLD.user_id
+                    AND transaction_category = OLD.transaction_category
+                    AND timestamp >= period_start_date
+                ),
+                0
+            )
+            WHERE id = target_record.id;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger on transactions table
+CREATE TRIGGER update_category_target_amount_trigger
+    AFTER INSERT OR UPDATE OF transaction_category
+    ON transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION update_category_target_amount();
