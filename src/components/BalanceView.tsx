@@ -28,6 +28,18 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
     });
   }, [data, timeRange]);
 
+  useEffect(() => {
+    console.log('🏦 Chart Data:', {
+      labels: data.chartData.labels,
+      data: data.chartData.current,
+      timeRange: {
+        type: timeRange.type,
+        startDate: timeRange.startDate.toISOString(),
+        endDate: timeRange.endDate.toISOString(),
+      },
+    });
+  }, [data, timeRange]);
+
   const [selectedPoint, setSelectedPoint] = useState<{
     value: number;
     date: string;
@@ -37,6 +49,23 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
   const handleDataPointClick = (value: number, date: string, index: number) => {
     setSelectedPoint({ value, date, index });
   };
+
+  const getChartLabels = () => {
+    const totalDays = timeRange.type === 'Month' ? 31 : 365;
+    const step = Math.floor(totalDays / 5);
+    const labels: string[] = [];
+    const days: number[] = [];
+
+    for (let i = 1; i <= 5; i++) {
+      const day = i * step;
+      labels.push(day.toString());
+      days.push(day);
+    }
+
+    return { labels, days };
+  };
+
+  const chartData = getChartLabels();
 
   return (
     <View style={styles.container}>
@@ -55,7 +84,7 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
       <View style={styles.chartWrapper}>
         <LineChart
           data={{
-            labels: data.chartData.labels.map((d) => formatDate(new Date(d))),
+            labels: chartData.labels,
             datasets: [
               {
                 data: data.chartData.current,
@@ -65,11 +94,16 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
             ],
           }}
           width={width - 32}
-          height={180}
+          height={220}
+          yAxisLabel="£"
+          yAxisSuffix="k"
+          yAxisInterval={1}
           withHorizontalLabels={true}
           withVerticalLabels={true}
           withDots={true}
           withShadow={false}
+          segments={6}
+          fromZero={true}
           chartConfig={{
             backgroundColor: '#0A1A2F',
             backgroundGradientFrom: '#0A1A2F',
@@ -89,11 +123,17 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
             propsForLabels: {
               fontSize: 10,
             },
+            formatYLabel: (value) => {
+              const num = parseFloat(value);
+              return isNaN(num) ? '' : Math.round(num / 1000).toString();
+            },
           }}
           bezier
           style={styles.chart}
           onDataPointClick={({ value, dataset, getColor, index }) => {
-            handleDataPointClick(value, data.chartData.labels[index], index);
+            const date = new Date(timeRange.startDate);
+            date.setDate(date.getDate() + chartData.days[index]);
+            handleDataPointClick(value, date.toISOString(), index);
           }}
         />
         {selectedPoint && (

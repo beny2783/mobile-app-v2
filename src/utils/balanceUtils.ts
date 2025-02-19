@@ -21,11 +21,23 @@ export const formatCurrency = (amount: number): string => {
   return `£${Math.abs(amount).toFixed(2)}`;
 };
 
-export const formatDate = (date: Date): string => {
-  return date.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-  });
+export const formatDate = (date: Date, format: 'chart' | 'full' = 'full'): string => {
+  try {
+    if (!date || isNaN(date.getTime())) {
+      return '';
+    }
+
+    if (format === 'chart') {
+      return date.getDate().toString();
+    }
+
+    return date.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+    });
+  } catch {
+    return '';
+  }
 };
 
 export type { BalanceData, TimeRange };
