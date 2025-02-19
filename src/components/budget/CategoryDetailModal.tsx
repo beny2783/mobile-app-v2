@@ -37,8 +37,6 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
   const { transactions } = useTransactions();
   const [isEditing, setIsEditing] = useState(false);
   const [targetLimit, setTargetLimit] = useState(category.target_limit.toString());
-  const [minLimit, setMinLimit] = useState(category.min_limit.toString());
-  const [maxLimit, setMaxLimit] = useState(category.max_limit.toString());
   const [period, setPeriod] = useState<TargetPeriod>(category.period);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -141,21 +139,9 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
 
   const handleUpdate = async () => {
     const target = parseFloat(targetLimit);
-    const min = parseFloat(minLimit);
-    const max = parseFloat(maxLimit);
 
     if (isNaN(target) || target <= 0) {
       Alert.alert('Error', 'Please enter a valid target amount');
-      return;
-    }
-
-    if (isNaN(min) || min < 0) {
-      Alert.alert('Error', 'Please enter a valid minimum limit');
-      return;
-    }
-
-    if (isNaN(max) || max <= min) {
-      Alert.alert('Error', 'Maximum limit must be greater than minimum limit');
       return;
     }
 
@@ -163,8 +149,6 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
     try {
       await onUpdate(category.category, {
         target_limit: target,
-        min_limit: min,
-        max_limit: max,
         period,
         period_start: new Date().toISOString(),
       });
@@ -336,32 +320,6 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
                     />
                   </View>
 
-                  <View style={styles.row}>
-                    <View style={[styles.inputGroup, styles.flex1]}>
-                      <Text style={styles.label}>Min Limit (£)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={minLimit}
-                        onChangeText={setMinLimit}
-                        keyboardType="decimal-pad"
-                        placeholder="0.00"
-                        placeholderTextColor={colors.text.secondary}
-                      />
-                    </View>
-
-                    <View style={[styles.inputGroup, styles.flex1, styles.marginLeft]}>
-                      <Text style={styles.label}>Max Limit (£)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={maxLimit}
-                        onChangeText={setMaxLimit}
-                        keyboardType="decimal-pad"
-                        placeholder="0.00"
-                        placeholderTextColor={colors.text.secondary}
-                      />
-                    </View>
-                  </View>
-
                   <TouchableOpacity
                     style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                     onPress={handleUpdate}
@@ -383,14 +341,6 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
                   <View style={styles.settingRow}>
                     <Text style={styles.settingLabel}>Target Amount:</Text>
                     <Text style={styles.settingValue}>£{category.target_limit.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.settingRow}>
-                    <Text style={styles.settingLabel}>Minimum Limit:</Text>
-                    <Text style={styles.settingValue}>£{category.min_limit.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.settingRow}>
-                    <Text style={styles.settingLabel}>Maximum Limit:</Text>
-                    <Text style={styles.settingValue}>£{category.max_limit.toFixed(2)}</Text>
                   </View>
                 </View>
               )}
@@ -509,30 +459,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  row: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  flex1: {
-    flex: 1,
-  },
-  marginLeft: {
-    marginLeft: 12,
-  },
-  submitButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: colors.text.inverse,
-    fontSize: 16,
-    fontWeight: '600',
-  },
   settingsInfo: {
     backgroundColor: colors.surface,
     borderRadius: 12,
@@ -577,6 +503,20 @@ const styles = StyleSheet.create({
   },
   selectedPeriodText: {
     color: colors.text.inverse,
+    fontWeight: '600',
+  },
+  submitButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    color: colors.text.inverse,
+    fontSize: 16,
     fontWeight: '600',
   },
 });

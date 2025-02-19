@@ -8,6 +8,7 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/theme';
@@ -79,8 +80,6 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
         category: selectedCategory,
         target_limit: target,
         current_amount: 0,
-        min_limit: 0,
-        max_limit: target,
         color,
         period,
         period_start: new Date().toISOString(),
@@ -104,6 +103,20 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
     onClose();
   };
 
+  const renderCategoryItem = ({ item: category }: { item: string }) => (
+    <TouchableOpacity
+      key={category}
+      style={[styles.categoryItem, selectedCategory === category && styles.selectedCategoryItem]}
+      onPress={() => setSelectedCategory(category)}
+    >
+      <Text
+        style={[styles.categoryText, selectedCategory === category && styles.selectedCategoryText]}
+      >
+        {category}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
     <Modal
       visible={isVisible}
@@ -126,27 +139,15 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
               {isCategoriesLoading ? (
                 <Text style={styles.loadingText}>Loading categories...</Text>
               ) : (
-                <ScrollView style={styles.categoryList}>
-                  {categories.map((category) => (
-                    <TouchableOpacity
-                      key={category}
-                      style={[
-                        styles.categoryItem,
-                        selectedCategory === category && styles.selectedCategoryItem,
-                      ]}
-                      onPress={() => setSelectedCategory(category)}
-                    >
-                      <Text
-                        style={[
-                          styles.categoryText,
-                          selectedCategory === category && styles.selectedCategoryText,
-                        ]}
-                      >
-                        {category}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                <View style={styles.categoryList}>
+                  <FlatList
+                    data={categories}
+                    renderItem={renderCategoryItem}
+                    keyExtractor={(item) => item}
+                    scrollEnabled={true}
+                    nestedScrollEnabled={true}
+                  />
+                </View>
               )}
             </View>
 
@@ -286,6 +287,8 @@ const styles = StyleSheet.create({
   },
   categoryList: {
     maxHeight: 200,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   categoryItem: {
     padding: 12,

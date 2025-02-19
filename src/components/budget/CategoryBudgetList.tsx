@@ -63,7 +63,7 @@ export const CategoryBudgetList: React.FC<CategoryBudgetListProps> = ({
         <View style={styles.cardHeader}>
           <View style={styles.categoryInfo}>
             <View style={[styles.categoryDot, { backgroundColor: item.color }]} />
-            <View>
+            <View style={styles.categoryTextContainer}>
               <Text style={styles.categoryName}>{item.category}</Text>
               <Text style={styles.subtext}>
                 {formatPeriod(item.period)} budget •{' '}
@@ -91,12 +91,6 @@ export const CategoryBudgetList: React.FC<CategoryBudgetListProps> = ({
               },
             ]}
           />
-        </View>
-
-        {/* Limits */}
-        <View style={styles.limitsContainer}>
-          <Text style={styles.limitText}>Min: £{item.min_limit.toFixed(2)}</Text>
-          <Text style={styles.limitText}>Max: £{item.max_limit.toFixed(2)}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -139,58 +133,56 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
   categoryInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flex: 1,
+    marginRight: 12,
+  },
+  categoryTextContainer: {
+    flex: 1,
   },
   categoryDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
     marginRight: 8,
+    marginTop: 4,
   },
   categoryName: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: colors.text.primary,
+    marginBottom: 4,
   },
   subtext: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.text.secondary,
     marginTop: 2,
+    lineHeight: 18,
   },
   amountContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
   amount: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text.primary,
+    marginBottom: 4,
     marginRight: 4,
   },
   progressBarContainer: {
-    height: 6,
+    height: 8,
     backgroundColor: colors.border,
-    borderRadius: 3,
+    borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 8,
   },
   progressBar: {
     height: '100%',
-    borderRadius: 3,
-  },
-  limitsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  limitText: {
-    fontSize: 12,
-    color: colors.text.secondary,
+    borderRadius: 4,
   },
   emptyContainer: {
     alignItems: 'center',
