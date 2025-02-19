@@ -50,6 +50,9 @@ export default function TransactionsScreen() {
   const [isCategoryModalVisible, setIsCategoryModalVisible] = useState(false);
   const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
 
+  // Add new state for tracking selected time period
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState<7 | 30 | 90>(30);
+
   const result = useTransactions() as UseTransactionsResult;
   const {
     transactions: filteredTransactions,
@@ -111,6 +114,14 @@ export default function TransactionsScreen() {
     }
   };
 
+  const handleTimePeriodChange = (days: 7 | 30 | 90) => {
+    setSelectedTimePeriod(days);
+    setDateRange({
+      from: new Date(Date.now() - days * 24 * 60 * 60 * 1000),
+      to: new Date(),
+    });
+  };
+
   const renderSearchBar = () => (
     <View style={styles.searchContainer}>
       <TextInput
@@ -124,19 +135,56 @@ export default function TransactionsScreen() {
 
   const renderDateFilter = () => (
     <View style={styles.dateFilterContainer}>
-      <TouchableOpacity
-        style={styles.dateFilterButton}
-        onPress={() =>
-          setDateRange({
-            from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-            to: new Date(),
-          })
-        }
-      >
-        <Text style={styles.dateFilterText}>
-          {dateRange.from.toLocaleDateString()} - {dateRange.to.toLocaleDateString()}
-        </Text>
-      </TouchableOpacity>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <TouchableOpacity
+          style={[
+            styles.dateFilterButton,
+            styles.timeRangeButton,
+            selectedTimePeriod === 7 && styles.timeRangeButtonActive,
+          ]}
+          onPress={() => handleTimePeriodChange(7)}
+        >
+          <Text
+            style={[styles.dateFilterText, selectedTimePeriod === 7 && styles.dateFilterTextActive]}
+          >
+            7 Days
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.dateFilterButton,
+            styles.timeRangeButton,
+            selectedTimePeriod === 30 && styles.timeRangeButtonActive,
+          ]}
+          onPress={() => handleTimePeriodChange(30)}
+        >
+          <Text
+            style={[
+              styles.dateFilterText,
+              selectedTimePeriod === 30 && styles.dateFilterTextActive,
+            ]}
+          >
+            30 Days
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.dateFilterButton,
+            styles.timeRangeButton,
+            selectedTimePeriod === 90 && styles.timeRangeButtonActive,
+          ]}
+          onPress={() => handleTimePeriodChange(90)}
+        >
+          <Text
+            style={[
+              styles.dateFilterText,
+              selectedTimePeriod === 90 && styles.dateFilterTextActive,
+            ]}
+          >
+            90 Days
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 
@@ -366,9 +414,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
+    marginHorizontal: 4,
+  },
+  timeRangeButton: {
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dateFilterText: {
     color: colors.text.primary,
+    fontSize: 14,
+    textAlign: 'center',
   },
   bankFilterContainer: {
     backgroundColor: colors.surface,
