@@ -13,6 +13,7 @@ export interface BaseTransaction {
 
 // Transaction type used in the database/API layer
 export interface DatabaseTransaction extends BaseTransaction {
+  transaction_id?: string; // TrueLayer's transaction ID
   user_id: string;
   connection_id: string;
   timestamp: string;

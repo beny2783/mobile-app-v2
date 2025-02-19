@@ -1,7 +1,9 @@
 export type AppTabParamList = {
   ConnectBank: undefined;
   Balances: undefined;
-  Transactions: undefined;
+  Transactions: {
+    refresh?: boolean;
+  };
   Profile: undefined;
   Callback: { url: string } | undefined;
 };

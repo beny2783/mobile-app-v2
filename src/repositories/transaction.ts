@@ -256,12 +256,32 @@ export class SupabaseTransactionRepository implements TransactionRepository {
         `[TransactionRepository] Updating category for transaction ${transactionId} to ${category}`
       );
 
-      const { error } = await supabase
+      // First, get the current transaction to ensure it exists
+      const { data: transaction, error: fetchError } = await supabase
         .from('transactions')
-        .update({ transaction_category: category })
+        .select('*')
+        .eq('transaction_id', transactionId)
+        .single();
+
+      if (fetchError) {
+        console.error('[TransactionRepository] Failed to fetch transaction:', fetchError);
+        throw this.handleError(fetchError);
+      }
+
+      if (!transaction) {
+        throw this.handleError(new Error('Transaction not found'));
+      }
+
+      // Update both category fields to ensure consistency
+      const { error: updateError } = await supabase
+        .from('transactions')
+        .update({
+          transaction_category: category,
+          transaction_type: category, // Update the TrueLayer field as well
+        })
         .eq('transaction_id', transactionId);
 
-      if (error) throw this.handleError(error);
+      if (updateError) throw this.handleError(updateError);
 
       console.log('[TransactionRepository] Successfully updated transaction category');
     } catch (error) {

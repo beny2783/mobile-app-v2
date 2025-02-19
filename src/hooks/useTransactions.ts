@@ -20,7 +20,7 @@ interface MerchantCategory {
   merchant_pattern: string;
 }
 
-interface UseTransactionsResult {
+export interface UseTransactionsResult {
   transactions: DatabaseTransaction[];
   loading: boolean;
   error: string | null;
@@ -216,7 +216,7 @@ export function useTransactions(): UseTransactionsResult {
         ...acc,
         [connection.id]: {
           total: connectionTotal,
-          bank_name: connection.provider_name || connection.provider,
+          bank_name: connection.provider,
         },
       };
     },
@@ -255,7 +255,7 @@ export function useTransactions(): UseTransactionsResult {
           if (!totals[bankId]) {
             totals[bankId] = {
               amount: 0,
-              name: bank?.provider_name || bank?.provider || 'Unknown Bank',
+              name: bank?.provider || 'Unknown Bank',
             };
           }
           totals[bankId].amount += t.amount;
