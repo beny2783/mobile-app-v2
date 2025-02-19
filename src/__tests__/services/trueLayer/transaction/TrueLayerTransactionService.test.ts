@@ -73,7 +73,10 @@ describe('TrueLayerTransactionService', () => {
       const result = await service.processTransactions([mockDatabaseTransaction]);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject(mockDatabaseTransaction);
+      expect(result[0]).toMatchObject({
+        ...mockDatabaseTransaction,
+        scheduled_date: null,
+      });
       const processedTransaction = result[0] as ProcessedDatabaseTransaction;
       expect(processedTransaction.processed_at).toBeDefined();
       expect(new Date(processedTransaction.processed_at).getTime()).toBeLessThanOrEqual(Date.now());

@@ -1,11 +1,7 @@
-import { DatabaseTransaction } from '../../types/transaction';
-import {
-  TrueLayerBalance as Balance,
-  BankAccount as Account,
-  BalanceResponse,
-} from '../../types/bank/balance';
-import { DatabaseGroupedBalances } from '../../types/bank/database';
+import { Balance, BankAccount, BalanceResponse } from '../../types/bank/balance';
 import { BankConnection } from '../../types/bank/connection';
+import { DatabaseGroupedBalances } from '../../types/bank/database';
+import { DatabaseTransaction } from '../../types/transaction';
 
 export interface TokenResponse {
   access_token: string;
@@ -43,7 +39,7 @@ export interface ITrueLayerStorageService {
   storeTokens(userId: string, tokens: TokenResponse): Promise<string>;
   getStoredToken(userId: string, connectionId: string): Promise<string | null>;
   storeTransactions(userId: string, transactions: DatabaseTransaction[]): Promise<void>;
-  storeBalances(userId: string, connectionId: string, balances: any): Promise<void>;
+  storeBalances(userId: string, connectionId: string, balances: BalanceResponse): Promise<void>;
   getActiveConnection(
     userId: string,
     connectionId?: string
@@ -82,4 +78,4 @@ export enum TrueLayerErrorCode {
   RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
 }
 
-export { Balance, Account, BalanceResponse, BankConnection };
+export { Balance, BankAccount, BankConnection, BalanceResponse };

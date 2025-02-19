@@ -77,6 +77,7 @@ describe('Bank Balance Type System', () => {
   describe('TrueLayer Types', () => {
     it('should validate TrueLayerBalance type', () => {
       const validTrueLayerBalance: TrueLayerBalance = {
+        account_id: 'acc-123',
         current: 1000,
         available: 900,
         currency: 'GBP',

@@ -29,6 +29,7 @@ export interface BankAccount {
  * Balance information specific to TrueLayer's API
  */
 export interface TrueLayerBalance {
+  account_id: string;
   current: number;
   available: number;
   currency: string;

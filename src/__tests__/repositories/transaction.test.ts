@@ -123,6 +123,7 @@ describe('SupabaseTransactionRepository', () => {
         transaction_category: 'Shopping',
         merchant_name: 'Test Store',
         user_id: 'test-user-id',
+        scheduled_date: null,
       };
 
       const mockTransactionsChain = {

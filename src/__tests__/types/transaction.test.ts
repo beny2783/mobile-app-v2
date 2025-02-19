@@ -69,6 +69,7 @@ describe('Transaction Type System', () => {
       expect(validDatabaseTransaction.user_id).toBeDefined();
       expect(validDatabaseTransaction.connection_id).toBeDefined();
       expect(validDatabaseTransaction.timestamp).toBeDefined();
+      expect(validDatabaseTransaction.scheduled_date).toBeNull();
     });
 
     it('should require additional database fields', () => {
@@ -95,7 +96,7 @@ describe('Transaction Type System', () => {
       expect(true).toBe(true);
     });
 
-    it('should allow optional database fields to be undefined', () => {
+    it('should allow optional database fields to be undefined or null', () => {
       const minimalDatabaseTransaction: DatabaseTransaction = {
         id: 'test-id',
         amount: 100,
@@ -110,6 +111,13 @@ describe('Transaction Type System', () => {
       expect(minimalDatabaseTransaction.scheduled_date).toBeUndefined();
       expect(minimalDatabaseTransaction.created_at).toBeUndefined();
       expect(minimalDatabaseTransaction.updated_at).toBeUndefined();
+
+      const transactionWithNullScheduledDate: DatabaseTransaction = {
+        ...minimalDatabaseTransaction,
+        scheduled_date: null,
+      };
+
+      expect(transactionWithNullScheduledDate.scheduled_date).toBeNull();
     });
   });
 

@@ -7,8 +7,10 @@ import {
   TrueLayerError,
   TrueLayerErrorCode,
   BalanceResponse,
+  BankAccount,
 } from '../types';
 import { DatabaseTransaction } from '../../../types/transaction';
+import type { TrueLayerBalance } from '../../../types/bank/balance';
 
 export class TrueLayerStorageService implements ITrueLayerStorageService {
   private encryption: EncryptionService;
@@ -104,7 +106,6 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
         transaction_type: transaction.transaction_type || 'unknown',
         transaction_category: transaction.transaction_category || 'Uncategorized',
         merchant_name: transaction.merchant_name || null,
-        scheduled_date: transaction.scheduled_date || null,
       }));
 
       const { error } = await supabase.from('transactions').upsert(transactionRecords, {
@@ -141,8 +142,7 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
 
       console.log('✅ Successfully stored all transactions');
     } catch (error) {
-      console.error('❌ Transaction storage error:', error);
-      if (error instanceof TrueLayerError) throw error;
+      console.error('❌ Failed to store transactions:', error);
       throw new TrueLayerError(
         'Failed to store transactions',
         TrueLayerErrorCode.STORAGE_FAILED,
@@ -155,30 +155,82 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
   async storeBalances(
     userId: string,
     connectionId: string,
-    balanceData: BalanceResponse
+    balances: BalanceResponse
   ): Promise<void> {
-    const balances = balanceData.results;
+    try {
+      console.log('💾 Storing balances for connection:', connectionId);
 
-    // Store balance records
-    const balanceRecords = balances.map((balance) => ({
-      user_id: userId,
-      connection_id: connectionId,
-      current: balance.current,
-      available: balance.available,
-      currency: balance.currency,
-      updated_at: balance.update_timestamp,
-    }));
+      // Store each balance in the response
+      for (const balance of balances.results) {
+        const { data: existingBalance, error: fetchError } = await supabase
+          .from('balances')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('connection_id', connectionId)
+          .eq('account_id', balance.account_id)
+          .single();
 
-    const { error: balanceError } = await supabase.from('balances').insert(balanceRecords);
-    if (balanceError) throw balanceError;
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          throw new TrueLayerError(
+            'Failed to check existing balance',
+            TrueLayerErrorCode.STORAGE_FAILED,
+            undefined,
+            fetchError
+          );
+        }
 
-    // Update connection metadata
-    await supabase
-      .from('bank_connections')
-      .update({
-        last_sync: new Date().toISOString(),
-      })
-      .eq('id', connectionId);
+        const balanceData = {
+          user_id: userId,
+          connection_id: connectionId,
+          account_id: balance.account_id,
+          current: balance.current,
+          available: balance.available,
+          currency: balance.currency,
+          updated_at: balance.update_timestamp,
+        };
+
+        if (existingBalance) {
+          // Update existing balance
+          const { error: updateError } = await supabase
+            .from('balances')
+            .update(balanceData)
+            .eq('id', existingBalance.id);
+
+          if (updateError) {
+            throw new TrueLayerError(
+              'Failed to update balance',
+              TrueLayerErrorCode.STORAGE_FAILED,
+              undefined,
+              updateError
+            );
+          }
+        } else {
+          // Insert new balance
+          const { error: insertError } = await supabase.from('balances').insert([balanceData]);
+
+          if (insertError) {
+            throw new TrueLayerError(
+              'Failed to insert balance',
+              TrueLayerErrorCode.STORAGE_FAILED,
+              undefined,
+              insertError
+            );
+          }
+        }
+      }
+
+      console.log('✅ Successfully stored balances');
+    } catch (error) {
+      console.error('❌ Failed to store balances:', error);
+      throw error instanceof TrueLayerError
+        ? error
+        : new TrueLayerError(
+            'Failed to store balances',
+            TrueLayerErrorCode.STORAGE_FAILED,
+            undefined,
+            error
+          );
+    }
   }
 
   async getActiveConnection(userId: string, connectionId?: string): Promise<BankConnection | null> {
@@ -260,6 +312,86 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
       if (error instanceof TrueLayerError) throw error;
       throw new TrueLayerError(
         'Failed to disconnect bank',
+        TrueLayerErrorCode.STORAGE_FAILED,
+        undefined,
+        error
+      );
+    }
+  }
+
+  async storeBankAccounts(
+    userId: string,
+    connectionId: string,
+    accounts: BankAccount[]
+  ): Promise<void> {
+    try {
+      console.log(`🏦 Storing ${accounts.length} bank accounts...`);
+
+      // First verify the connection exists and belongs to the user
+      const { data: connection, error: connectionError } = await supabase
+        .from('bank_connections')
+        .select('id')
+        .eq('id', connectionId)
+        .eq('user_id', userId)
+        .single();
+
+      if (connectionError || !connection) {
+        console.error('❌ Bank connection not found or unauthorized:', connectionError);
+        throw new TrueLayerError(
+          'Bank connection not found or unauthorized',
+          TrueLayerErrorCode.STORAGE_FAILED,
+          undefined,
+          connectionError
+        );
+      }
+
+      // Delete existing accounts for this connection to avoid conflicts
+      const { error: deleteError } = await supabase
+        .from('bank_accounts')
+        .delete()
+        .eq('connection_id', connectionId);
+
+      if (deleteError) {
+        console.error('❌ Failed to clean up existing accounts:', deleteError);
+        throw new TrueLayerError(
+          'Failed to clean up existing accounts',
+          TrueLayerErrorCode.STORAGE_FAILED,
+          undefined,
+          deleteError
+        );
+      }
+
+      // Map accounts to records
+      const accountRecords = accounts.map((account) => ({
+        user_id: userId,
+        connection_id: connectionId,
+        account_id: account.account_id,
+        account_type: account.account_type,
+        account_name: account.account_name,
+        currency: account.currency,
+        balance: account.balance,
+        last_updated: new Date().toISOString(),
+      }));
+
+      // Insert new accounts
+      const { error: insertError } = await supabase.from('bank_accounts').insert(accountRecords);
+
+      if (insertError) {
+        console.error('❌ Failed to store bank accounts:', insertError);
+        throw new TrueLayerError(
+          'Failed to store bank accounts',
+          TrueLayerErrorCode.STORAGE_FAILED,
+          undefined,
+          insertError
+        );
+      }
+
+      console.log('✅ Bank accounts stored successfully');
+    } catch (error) {
+      console.error('❌ Failed to store bank accounts:', error);
+      if (error instanceof TrueLayerError) throw error;
+      throw new TrueLayerError(
+        'Failed to store bank accounts',
         TrueLayerErrorCode.STORAGE_FAILED,
         undefined,
         error

@@ -84,7 +84,12 @@ export class TrueLayerService {
       const token = await this.storageService.getStoredToken(userId, connectionId);
       if (!token) throw new Error('No valid token available');
 
-      // First fetch and store balances to ensure accounts are created
+      // First fetch accounts and create them
+      console.log('🏦 Fetching bank accounts...');
+      const accounts = await this.apiService.fetchAccounts(token);
+      await this.storageService.storeBankAccounts(userId, connectionId, accounts);
+
+      // Then fetch and store balances
       console.log('📊 Fetching initial balances...');
       const balances = await this.apiService.fetchBalances(token);
       await this.storageService.storeBalances(userId, connectionId, balances);

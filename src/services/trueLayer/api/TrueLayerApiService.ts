@@ -10,6 +10,7 @@ import {
   TrueLayerErrorCode,
   BalanceResponse,
   ITrueLayerStorageService,
+  BankAccount,
 } from '../types';
 import { DatabaseTransaction } from '../../../types/transaction';
 import { authRepository } from '../../../repositories/auth';
@@ -248,6 +249,7 @@ export class TrueLayerApiService implements ITrueLayerApiService {
           if (balanceData.results?.[0]) {
             const balance = balanceData.results[0];
             balances.push({
+              account_id: account.account_id,
               current: balance.current,
               available: balance.available,
               currency: balance.currency,
@@ -307,7 +309,7 @@ export class TrueLayerApiService implements ITrueLayerApiService {
     }
   }
 
-  private async fetchAccounts(token: string): Promise<any[]> {
+  private async fetchAccounts(token: string): Promise<BankAccount[]> {
     try {
       const accountsResponse = await fetch(`${this.config.loginUrl}/data/v1/accounts`, {
         headers: {
@@ -325,7 +327,14 @@ export class TrueLayerApiService implements ITrueLayerApiService {
       }
 
       const accountsData = await accountsResponse.json();
-      return accountsData.results || [];
+      return (accountsData.results || []).map((account: any) => ({
+        account_id: account.account_id,
+        account_type: account.account_type,
+        account_name: account.display_name || account.account_type,
+        balance: account.balance || 0,
+        currency: account.currency,
+        last_updated: new Date().toISOString(),
+      }));
     } catch (error) {
       if (error instanceof TrueLayerError) throw error;
       throw new TrueLayerError(
