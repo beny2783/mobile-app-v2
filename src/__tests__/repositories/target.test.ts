@@ -9,6 +9,8 @@ import {
   CreateTargetInput,
   CreateCategoryTargetInput,
 } from '../../types/target';
+import { mockSupabaseClient } from '../mocks/supabase';
+import { useAuth } from '../../store/slices/auth/hooks';
 
 interface MockChain {
   select: jest.Mock;
@@ -29,13 +31,30 @@ jest.mock('../../services/supabase', () => ({
   },
 }));
 
+// Mock the auth hook
+jest.mock('../../store/slices/auth/hooks', () => ({
+  useAuth: jest.fn(),
+}));
+
 describe('SupabaseTargetRepository', () => {
   let repository: SupabaseTargetRepository;
-  const mockUserId = 'test-user-id';
 
   beforeEach(() => {
-    repository = new SupabaseTargetRepository();
+    // Reset all mocks
     jest.clearAllMocks();
+
+    // Mock auth state
+    (useAuth as jest.Mock).mockReturnValue({
+      user: {
+        id: 'test-user-id',
+        email: 'test@example.com',
+      },
+      session: {
+        access_token: 'test-token',
+      },
+    });
+
+    repository = new SupabaseTargetRepository(mockSupabaseClient);
   });
 
   describe('getTargets', () => {
@@ -43,7 +62,7 @@ describe('SupabaseTargetRepository', () => {
       const mockTargets: Target[] = [
         {
           id: '1',
-          user_id: mockUserId,
+          user_id: 'test-user-id',
           type: 'spending',
           amount: 1000,
           current_amount: 500,

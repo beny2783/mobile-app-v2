@@ -1,31 +1,24 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../store/slices/auth/hooks';
 import { colors } from '../constants/theme';
 
 export default function AuthScreen() {
-  const { signIn, signInWithTestUser, error } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const { signInWithGoogle, signInWithEmail, error, loading } = useAuth();
 
   const handleGoogleSignIn = async () => {
-    setLoading(true);
     try {
-      await signIn();
+      await signInWithGoogle();
     } catch (error) {
       console.error('Google sign in error:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleTestSignIn = async () => {
-    setLoading(true);
     try {
-      await signInWithTestUser();
+      await signInWithEmail({ email: 'test@example.com', password: 'testpass123' });
     } catch (error) {
       console.error('Test sign in error:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -86,7 +79,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   buttonText: {
-    color: colors.white,
+    color: colors.text.primary,
     fontSize: 16,
     fontWeight: 'bold',
   },

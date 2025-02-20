@@ -81,26 +81,29 @@ describe('Auth Type System', () => {
     });
 
     it('should validate timestamp formats', () => {
-      const validProfile: Profile = {
-        id: 'user-123',
+      const validProfile = {
+        id: 'test-id',
         email: 'test@example.com',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:01Z',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
       };
 
-      // Runtime validation of timestamp formats
       const invalidTimestampProfile = {
-        ...validProfile,
-        created_at: '2024-01-01', // Invalid ISO format
-        updated_at: 'invalid-date',
+        id: 'test-id',
+        email: 'test@example.com',
+        created_at: 'invalid-date',
+        updated_at: '2024-01-01',
       };
 
+      // Valid timestamps should parse to valid Date objects
       expect(new Date(validProfile.created_at).toISOString()).toBe(validProfile.created_at);
       expect(new Date(validProfile.updated_at).toISOString()).toBe(validProfile.updated_at);
-      expect(() => new Date(invalidTimestampProfile.created_at).toISOString()).not.toBe(
-        invalidTimestampProfile.created_at
+
+      // Invalid timestamps should throw or produce invalid dates
+      expect(() => new Date(invalidTimestampProfile.created_at).getTime()).toThrow();
+      expect(new Date(invalidTimestampProfile.updated_at).toISOString()).not.toBe(
+        invalidTimestampProfile.updated_at
       );
-      expect(() => new Date(invalidTimestampProfile.updated_at).getTime()).toThrow();
     });
   });
 });

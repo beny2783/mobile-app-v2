@@ -3,23 +3,34 @@ import { ITrueLayerTransactionService } from '../types';
 import { DatabaseTransaction } from '../../../types/transaction';
 import { ITrueLayerApiService } from '../types';
 import { ITrueLayerStorageService } from '../types';
+import { Logger } from '../../../utils/logger';
+import { TrueLayerClient, TrueLayerTransaction, ProcessedTransaction } from '../types';
 
 export class TrueLayerTransactionService implements ITrueLayerTransactionService {
+  private log = new Logger('TrueLayerTransactionService', '💸');
+
   constructor(
     private apiService: ITrueLayerApiService,
-    private storageService: ITrueLayerStorageService
+    private storageService: ITrueLayerStorageService,
+    private readonly client: TrueLayerClient
   ) {
-    console.log('💸 Initializing TrueLayerTransactionService');
+    this.log.info('Initializing TrueLayerTransactionService');
   }
 
-  async processTransactions(transactions: DatabaseTransaction[]): Promise<DatabaseTransaction[]> {
-    // Enrich transactions with additional data and processing
-    const processedTransactions = transactions.map((transaction) => ({
+  async processTransactions(
+    transactions: TrueLayerTransaction[],
+    connectionId: string
+  ): Promise<ProcessedTransaction[]> {
+    return transactions.map((transaction) => ({
       ...transaction,
+      connection_id: transaction.connection_id || connectionId,
+      id: transaction.id || this.generateTransactionId(transaction, connectionId),
       processed_at: new Date().toISOString(),
     }));
+  }
 
-    return processedTransactions;
+  private generateTransactionId(transaction: TrueLayerTransaction, connectionId: string): string {
+    return `${connectionId}_${new Date(transaction.timestamp).getTime()}`;
   }
 
   async categorizeTransactions(
@@ -68,7 +79,7 @@ export class TrueLayerTransactionService implements ITrueLayerTransactionService
         const transactions = await this.apiService.fetchTransactions(token, fromDate);
 
         // Process and categorize transactions
-        const processedTransactions = await this.processTransactions(transactions);
+        const processedTransactions = await this.processTransactions(transactions, connection.id);
         const categorizedTransactions = await this.categorizeTransactions(processedTransactions);
 
         // Store the transactions

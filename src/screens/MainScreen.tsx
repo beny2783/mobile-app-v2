@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Button, StyleSheet } from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../store/slices/auth/hooks';
 
 export default function MainScreen() {
   const { signOut } = useAuth();

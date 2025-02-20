@@ -48,9 +48,29 @@ export interface ITrueLayerStorageService {
 }
 
 export interface ITrueLayerTransactionService {
-  processTransactions(transactions: DatabaseTransaction[]): Promise<DatabaseTransaction[]>;
-  categorizeTransactions(transactions: DatabaseTransaction[]): Promise<DatabaseTransaction[]>;
-  updateTransactionHistory(userId: string, days?: number): Promise<void>;
+  processTransactions(
+    transactions: TrueLayerTransaction[],
+    connectionId: string
+  ): Promise<ProcessedTransaction[]>;
+}
+
+export interface TrueLayerClient {
+  exchangeCode(code: string): Promise<void>;
+  getTransactions(connectionId: string): Promise<TrueLayerTransaction[]>;
+}
+
+export interface TrueLayerTransaction {
+  id?: string;
+  connection_id?: string;
+  timestamp: string;
+  amount: number;
+  currency: string;
+  description: string;
+}
+
+export interface ProcessedTransaction extends TrueLayerTransaction {
+  id: string;
+  connection_id: string;
 }
 
 export class TrueLayerError extends Error {

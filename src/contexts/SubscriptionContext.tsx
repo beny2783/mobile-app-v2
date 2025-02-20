@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from './AuthContext';
+import { useAuth } from '../store/slices/auth/hooks';
 
 export type SubscriptionPlan = {
   id: string;

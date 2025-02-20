@@ -1,22 +1,16 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { supabase } from '../services/supabase';
+import { RootStackParamList } from '../navigation/types';
 
-type RootStackParamList = {
-  Auth: undefined;
-  AuthCallback: undefined;
-  Main: undefined;
-};
-
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'AuthCallback'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function AuthCallbackScreen() {
   const navigation = useNavigation<NavigationProp>();
 
-  React.useEffect(() => {
-    // Just navigate back to Auth screen - the AuthContext will handle the session
+  useEffect(() => {
+    // Just navigate back to Auth screen - the Redux auth state will handle the session
     navigation.navigate('Auth');
   }, [navigation]);
 

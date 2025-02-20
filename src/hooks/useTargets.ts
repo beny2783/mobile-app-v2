@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../store/slices/auth/hooks';
 import { createTargetRepository } from '../repositories/target';
 import {
   Target,

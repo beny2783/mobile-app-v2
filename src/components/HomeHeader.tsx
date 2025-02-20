@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Platform, StatusBar } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../store/slices/auth/hooks';
 import { colors } from '../constants/theme';
 
 interface HomeHeaderProps {

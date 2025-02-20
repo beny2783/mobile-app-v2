@@ -19,6 +19,8 @@ export interface Transaction {
   transaction_type?: string;
   transaction_category?: string;
   scheduled_date?: string; // Date string for scheduled future transactions
+  category: string;
+  date: string;
 }
 
 export type AppTabParamList = {
@@ -33,15 +35,20 @@ export type AppTabParamList = {
 
 export interface Challenge {
   id: string;
-  name: string;
-  description: string;
-  type: 'daily' | 'weekly' | 'achievement';
-  criteria: ChallengeCriteria;
-  reward_xp: number;
-  reward_badge?: string;
-  active: boolean;
-  created_at: string;
-  updated_at: string;
+  type: 'reduced_spending';
+  target_amount: number;
+  category: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface ChallengeProgress {
+  isCompleted: boolean;
+  isFailed: boolean;
+  progress: {
+    category_spent: number;
+    total_spent: number;
+  };
 }
 
 export type ChallengeCriteria = {

@@ -1,17 +1,20 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { Provider } from 'react-redux';
 // import * as ExpoNotifications from 'expo-notifications';
 import { RootStackParamList } from './src/navigation/types';
 import AuthScreen from './src/screens/AuthScreen';
-import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { ServiceProvider } from './src/contexts/ServiceContext';
 import { TabNavigator } from './src/navigation/TabNavigator';
 import { setupErrorHandling } from './src/utils/errorHandling';
 import { linking } from './src/navigation/linking';
+import store from './src/store';
+import { GlobalLoadingIndicator } from './src/components/common/GlobalLoadingIndicator';
 // import { NotificationService } from './src/services/NotificationService';
+import { useAuth } from './src/store/slices/auth/hooks';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -20,7 +23,11 @@ const LoadingSpinner = () => (
 );
 
 function Navigation() {
-  const { user, loading } = useAuth();
+  const { user, loading, checkUser } = useAuth();
+
+  useEffect(() => {
+    checkUser();
+  }, [checkUser]);
 
   if (loading) {
     return (
@@ -87,7 +94,7 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
+    <Provider store={store}>
       <ServiceProvider>
         <NavigationContainer
           linking={linking}
@@ -100,10 +107,11 @@ export default function App() {
           <View style={styles.container}>
             <StatusBar style="auto" />
             <Navigation />
+            <GlobalLoadingIndicator />
           </View>
         </NavigationContainer>
       </ServiceProvider>
-    </AuthProvider>
+    </Provider>
   );
 }
 

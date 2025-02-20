@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Button, Avatar } from 'react-native-paper';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../store/slices/auth/hooks';
 import { colors } from '../constants/theme';
 import TotalBalance from '../components/TotalBalance';
 import BalanceGraph from '../components/BalanceGraph';
