@@ -172,12 +172,13 @@ jest.mock('react-native', () => ({
 
 // Mock Expo vector icons
 jest.mock('@expo/vector-icons', () => ({
-  Ionicons: 'Ionicons',
+  Ionicons: '',
 }));
 
 // Mock expo-web-browser
 jest.mock('expo-web-browser', () => ({
   openAuthSessionAsync: jest.fn(),
+  warmUpAsync: jest.fn(),
   coolDownAsync: jest.fn(),
 }));
 
@@ -243,42 +244,13 @@ jest.mock('react-native/Libraries/AppState/AppState', () => {
 });
 
 // Mock NavigationContainer and related hooks for testing
-jest.mock('@react-navigation/native', () => {
-  const actualNav = jest.requireActual('@react-navigation/native');
-  const emitter = new MockEventEmitter();
-
-  return {
-    ...actualNav,
-    NavigationContainer: ({ children, linking, ...props }) => children,
-    useNavigation: () => ({
-      navigate: jest.fn(),
-      goBack: jest.fn(),
-      addListener: (type, handler) => emitter.addListener(type, handler),
-      removeListener: (type, handler) => emitter.removeListener(type, handler),
-      dispatch: jest.fn(),
-      setOptions: jest.fn(),
-      isFocused: jest.fn(() => true),
-      canGoBack: jest.fn(() => true),
-    }),
-    useRoute: () => ({
-      params: {},
-      name: 'ConnectBank',
-    }),
-    useLinking: () => ({
-      getInitialState: jest.fn(() => Promise.resolve()),
-      subscribe: jest.fn(() => () => {}),
-      enabled: true,
-    }),
-    createNavigationContainerRef: () => ({
-      current: {
-        navigate: jest.fn(),
-        dispatch: jest.fn(),
-        addListener: (type, handler) => emitter.addListener(type, handler),
-        removeListener: (type, handler) => emitter.removeListener(type, handler),
-      },
-    }),
-  };
-});
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => ({
+    navigate: jest.fn(),
+    goBack: jest.fn(),
+  }),
+}));
 
 // Mock Linking from react-native
 jest.mock('react-native/Libraries/Linking/Linking', () => {
@@ -300,7 +272,7 @@ jest.mock('react-native/Libraries/Linking/Linking', () => {
 // Mock Platform
 jest.mock('react-native/Libraries/Utilities/Platform', () => ({
   OS: 'ios',
-  select: jest.fn((obj) => obj.ios),
+  select: jest.fn((dict) => dict.ios),
 }));
 
 // Mock useWindowDimensions
@@ -352,3 +324,33 @@ jest.mock('./src/constants', () => ({
     ANON_KEY: 'test-anon-key',
   },
 }));
+
+// Mock React Native modules
+jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper', () => ({
+  API: {
+    createAnimatedNode: jest.fn(),
+    startListeningToAnimatedNodeValue: jest.fn(),
+    stopListeningToAnimatedNodeValue: jest.fn(),
+    connectAnimatedNodes: jest.fn(),
+    disconnectAnimatedNodes: jest.fn(),
+    startAnimatingNode: jest.fn(),
+    stopAnimation: jest.fn(),
+    setAnimatedNodeValue: jest.fn(),
+    setAnimatedNodeOffset: jest.fn(),
+    flattenAnimatedNodeOffset: jest.fn(),
+    extractAnimatedNodeOffset: jest.fn(),
+    connectAnimatedNodeToView: jest.fn(),
+    disconnectAnimatedNodeFromView: jest.fn(),
+    dropAnimatedNode: jest.fn(),
+    addAnimatedEventToView: jest.fn(),
+    removeAnimatedEventFromView: jest.fn(),
+  },
+}));
+
+// Global setup
+global.fetch = jest.fn();
+global.console = {
+  ...console,
+  warn: jest.fn(),
+  error: jest.fn(),
+};
