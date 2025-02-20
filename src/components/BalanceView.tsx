@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import { LineChart } from 'react-native-chart-kit';
+import { LineChart, DataPoint } from 'react-native-gifted-charts';
 import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency, formatDate } from '../utils/balanceUtils';
 import { colors } from '../constants/theme';
 import { TimeRange, BalanceAnalysisData } from '../types/bank/analysis';
 
 const { width } = Dimensions.get('window');
+
+interface CustomDataPoint extends DataPoint {
+  date: string;
+  label: string;
+}
 
 interface BalanceViewProps {
   data: BalanceAnalysisData;
@@ -40,32 +45,19 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
     });
   }, [data, timeRange]);
 
-  const [selectedPoint, setSelectedPoint] = useState<{
-    value: number;
-    date: string;
-    index: number;
-  } | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<CustomDataPoint | null>(null);
 
-  const handleDataPointClick = (value: number, date: string, index: number) => {
-    setSelectedPoint({ value, date, index });
-  };
-
-  const getChartLabels = () => {
-    const totalDays = timeRange.type === 'Month' ? 31 : 365;
-    const step = Math.floor(totalDays / 5);
-    const labels: string[] = [];
-    const days: number[] = [];
-
-    for (let i = 1; i <= 5; i++) {
-      const day = i * step;
-      labels.push(day.toString());
-      days.push(day);
-    }
-
-    return { labels, days };
-  };
-
-  const chartData = getChartLabels();
+  // Transform data for the chart
+  const chartData: CustomDataPoint[] = data.chartData.current.map((value, index) => ({
+    value,
+    label: data.chartData.labels[index],
+    date: (() => {
+      const date = new Date(timeRange.startDate);
+      date.setDate(date.getDate() + index);
+      return date.toISOString();
+    })(),
+    showDataPoint: true,
+  }));
 
   return (
     <View style={styles.container}>
@@ -83,74 +75,60 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
       {/* Balance Chart */}
       <View style={styles.chartWrapper}>
         <LineChart
-          data={{
-            labels: chartData.labels,
-            datasets: [
-              {
-                data: data.chartData.current,
-                color: (opacity = 1) => `rgba(46, 196, 182, ${opacity})`,
-                strokeWidth: 2,
-              },
-            ],
-          }}
-          width={width - 32}
+          data={chartData}
           height={220}
-          yAxisLabel="£"
-          yAxisSuffix="k"
-          yAxisInterval={1}
-          withHorizontalLabels={true}
-          withVerticalLabels={true}
-          withDots={true}
-          withShadow={false}
-          segments={6}
-          fromZero={true}
-          chartConfig={{
-            backgroundColor: '#0A1A2F',
-            backgroundGradientFrom: '#0A1A2F',
-            backgroundGradientTo: '#0A1A2F',
-            decimalPlaces: 0,
-            color: (opacity = 1) => `rgba(46, 196, 182, ${opacity})`,
-            labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-            style: {
-              borderRadius: 16,
-            },
-            propsForDots: {
-              r: '4',
-              strokeWidth: '2',
-              stroke: '#2EC4B6',
-              fill: '#0A1A2F',
-            },
-            propsForLabels: {
-              fontSize: 10,
-            },
-            formatYLabel: (value) => {
-              const num = parseFloat(value);
-              return isNaN(num) ? '' : Math.round(num / 1000).toString();
-            },
+          width={width - 64}
+          hideDataPoints={false}
+          spacing={40}
+          color="#2EC4B6"
+          thickness={3}
+          startFillColor="rgba(46, 196, 182, 0.1)"
+          endFillColor="rgba(46, 196, 182, 0.01)"
+          initialSpacing={20}
+          endSpacing={20}
+          noOfSections={6}
+          yAxisColor="rgba(255,255,255,0.1)"
+          xAxisColor="rgba(255,255,255,0.1)"
+          yAxisTextStyle={{ color: 'white', fontSize: 12 }}
+          xAxisTextStyle={{
+            color: '#FFFFFF',
+            fontSize: 11,
+            fontWeight: '500',
           }}
-          bezier
-          style={styles.chart}
-          onDataPointClick={({ value, dataset, getColor, index }) => {
-            const date = new Date(timeRange.startDate);
-            date.setDate(date.getDate() + chartData.days[index]);
-            handleDataPointClick(value, date.toISOString(), index);
+          yAxisLabelSuffix=""
+          yAxisLabelPrefix="£"
+          rulesColor="rgba(255,255,255,0.1)"
+          rulesType="solid"
+          yAxisTextNumberOfLines={1}
+          yAxisLabelWidth={60}
+          hideOrigin={true}
+          maxValue={Math.ceil(Math.max(...data.chartData.current) * 1.05)}
+          minValue={Math.floor(Math.min(...data.chartData.current) * 0.95)}
+          xAxisLabelsVerticalShift={10}
+          formatXLabel={(label: string) => {
+            const date = new Date(label);
+            return `${date.getDate()} ${date.toLocaleString('default', { month: 'short' })}`;
+          }}
+          dataPointsHeight={6}
+          dataPointsWidth={6}
+          dataPointsColor="#2EC4B6"
+          dataPointsShape="circle"
+          onPress={(point: DataPoint) => {
+            if (point.date && point.label) {
+              setSelectedPoint(point as CustomDataPoint);
+            }
+          }}
+          curved
+          renderTooltip={(point: DataPoint) => {
+            if (!selectedPoint || selectedPoint.value !== point.value || !point.date) return null;
+            return (
+              <View style={styles.tooltip}>
+                <Text style={styles.tooltipText}>{formatCurrency(point.value)}</Text>
+                <Text style={styles.tooltipDate}>{formatDate(new Date(point.date))}</Text>
+              </View>
+            );
           }}
         />
-        {selectedPoint && (
-          <View
-            style={[
-              styles.tooltip,
-              {
-                top: 40,
-                left:
-                  (width - 32) * (selectedPoint.index / (data.chartData.labels.length - 1)) - 40,
-              },
-            ]}
-          >
-            <Text style={styles.tooltipText}>{formatCurrency(selectedPoint.value)}</Text>
-            <Text style={styles.tooltipDate}>{formatDate(new Date(selectedPoint.date))}</Text>
-          </View>
-        )}
       </View>
 
       {/* Time Range Selector */}
@@ -159,13 +137,27 @@ export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTim
           style={[styles.timeButton, timeRange.type === 'Month' && styles.activeTimeButton]}
           onPress={() => onTimeRangeChange('Month')}
         >
-          <Text style={styles.timeButtonText}>Month</Text>
+          <Text
+            style={[
+              styles.timeButtonText,
+              timeRange.type === 'Month' && styles.activeTimeButtonText,
+            ]}
+          >
+            Month
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.timeButton, timeRange.type === 'Year' && styles.activeTimeButton]}
           onPress={() => onTimeRangeChange('Year')}
         >
-          <Text style={styles.timeButtonText}>Year</Text>
+          <Text
+            style={[
+              styles.timeButtonText,
+              timeRange.type === 'Year' && styles.activeTimeButtonText,
+            ]}
+          >
+            Year
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -264,28 +256,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   chartWrapper: {
-    marginBottom: 16,
-    position: 'relative',
-  },
-  chart: {
-    marginVertical: 8,
+    marginBottom: 24,
+    backgroundColor: '#0A1A2F',
     borderRadius: 16,
-  },
-  tooltip: {
-    position: 'absolute',
-    backgroundColor: '#FFF',
-    padding: 8,
-    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 5,
+    elevation: 3,
+  },
+  tooltip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    padding: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    minWidth: 120,
   },
   tooltipText: {
     color: '#000',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
+    marginBottom: 4,
   },
   tooltipDate: {
     color: 'rgba(0, 0, 0, 0.6)',
@@ -310,6 +307,9 @@ const styles = StyleSheet.create({
   timeButtonText: {
     color: '#FFF',
     fontSize: 14,
+  },
+  activeTimeButtonText: {
+    color: '#0A1A2F',
   },
   breakdownContainer: {
     gap: 16,
