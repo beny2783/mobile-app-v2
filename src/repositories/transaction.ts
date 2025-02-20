@@ -47,48 +47,40 @@ export class SupabaseTransactionRepository implements TransactionRepository {
         session?.access_token ? 'Present' : 'Missing'
       );
 
-      // Debug: Try a simpler query first
-      const { data: simpleData, error: simpleError } = await supabase
-        .from('merchant_categories')
-        .select('category')
-        .limit(1);
-
-      console.log('[TransactionRepository] Simple query test:', {
-        success: !!simpleData,
-        error: simpleError?.message,
-        data: simpleData,
-      });
-
-      let query = supabase.from('merchant_categories').select('category, merchant_pattern');
-
+      // First get user-specific patterns
+      let userPatterns: MerchantCategory[] = [];
       if (user) {
-        // Debug: Try to get system categories first
-        const { data: systemCategories, error: systemError } = await supabase
+        const { data: userSpecific, error: userError } = await supabase
           .from('merchant_categories')
           .select('category, merchant_pattern')
-          .is('user_id', null);
+          .eq('user_id', user.id);
 
-        console.log('[TransactionRepository] System categories query:', {
-          success: !!systemCategories,
-          error: systemError?.message,
-          count: systemCategories?.length || 0,
-        });
-
-        query = query.or(`user_id.is.null,user_id.eq.${user.id}`);
-        console.log('[TransactionRepository] Query includes user-specific categories');
-      } else {
-        query = query.is('user_id', null);
-        console.log('[TransactionRepository] Query only includes system categories');
+        if (userError) {
+          console.error('[TransactionRepository] Error fetching user patterns:', userError);
+          throw this.handleError(userError);
+        }
+        userPatterns = userSpecific || [];
       }
 
-      const { data, error } = await query;
+      // Then get system patterns
+      const { data: systemPatterns, error: systemError } = await supabase
+        .from('merchant_categories')
+        .select('category, merchant_pattern')
+        .is('user_id', null);
 
-      if (error) {
-        console.error('[TransactionRepository] Error fetching categories:', error);
-        throw this.handleError(error);
+      if (systemError) {
+        console.error('[TransactionRepository] Error fetching system patterns:', systemError);
+        throw this.handleError(systemError);
       }
 
-      this.merchantCategories = data || [];
+      // Combine patterns, giving precedence to user patterns
+      const userPatternSet = new Set(userPatterns.map((p) => p.merchant_pattern));
+      const systemPatternsFiltered = (systemPatterns || []).filter(
+        (p) => !userPatternSet.has(p.merchant_pattern)
+      );
+
+      this.merchantCategories = [...userPatterns, ...systemPatternsFiltered];
+
       console.log(
         '[TransactionRepository] Merchant categories loaded:',
         this.merchantCategories.map((c) => ({

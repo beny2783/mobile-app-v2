@@ -24,6 +24,7 @@ import CategorySelectionModal from '../components/modals/CategorySelectionModal'
 import { createTransactionRepository } from '../repositories/transaction';
 import { useServices } from '../contexts/ServiceContext';
 import { ITrueLayerApiService } from '../services/trueLayer/types';
+import { createTargetRepository } from '../repositories/target';
 
 interface TransactionSection {
   title: string;
@@ -79,6 +80,12 @@ export default function TransactionsScreen() {
     trueLayerService as unknown as ITrueLayerApiService
   );
 
+  // Add effect to refresh transactions when connections change
+  useEffect(() => {
+    console.log('🔄 Bank connections changed, refreshing transactions');
+    refresh();
+  }, [connections, refresh]);
+
   // Handle refresh parameter from navigation
   useEffect(() => {
     const params = route.params as { refresh?: boolean } | undefined;
@@ -129,6 +136,7 @@ export default function TransactionsScreen() {
         editingTransaction.transaction_id || editingTransaction.id,
         newCategory
       );
+
       await refresh();
       setIsCategoryModalVisible(false);
       setEditingTransaction(null);
@@ -448,10 +456,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  timeRangeButtonActive: {
+    backgroundColor: colors.primary + '20',
+    borderColor: colors.primary,
+  },
   dateFilterText: {
     color: colors.text.primary,
     fontSize: 14,
     textAlign: 'center',
+  },
+  dateFilterTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   bankFilterContainer: {
     backgroundColor: colors.surface,

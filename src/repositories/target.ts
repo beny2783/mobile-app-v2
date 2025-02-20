@@ -14,6 +14,7 @@ import {
   CreateTargetAchievementInput,
   CreateDailySpendingInput,
   UpdateDailySpendingInput,
+  TargetPeriod,
 } from '../types/target';
 
 export class SupabaseTargetRepository implements TargetRepository {
@@ -101,6 +102,48 @@ export class SupabaseTargetRepository implements TargetRepository {
   }
 
   // Category target operations
+  private async recalculateTargetAmounts(targets: CategoryTarget[]): Promise<CategoryTarget[]> {
+    try {
+      const user = await authRepository.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const updatedTargets = await Promise.all(
+        targets.map(async (target) => {
+          const currentAmount = await this.calculateCategoryTargetAmount(
+            user.id,
+            target.category,
+            target.period_start,
+            target.period
+          );
+
+          if (currentAmount !== target.current_amount) {
+            console.log('[TargetRepository] Updating target amount:', {
+              category: target.category,
+              oldAmount: target.current_amount,
+              newAmount: currentAmount,
+            });
+
+            const { data: updatedTarget, error } = await supabase
+              .from('category_targets')
+              .update({ current_amount: currentAmount })
+              .eq('id', target.id)
+              .select()
+              .single();
+
+            if (error) throw this.handleError(error);
+            return updatedTarget;
+          }
+
+          return target;
+        })
+      );
+
+      return updatedTargets;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
   async getCategoryTargets(userId: string): Promise<CategoryTarget[]> {
     try {
       const { data, error } = await supabase
@@ -109,7 +152,10 @@ export class SupabaseTargetRepository implements TargetRepository {
         .eq('user_id', userId);
 
       if (error) throw this.handleError(error);
-      return data || [];
+
+      // Recalculate amounts for all targets
+      const targets = data || [];
+      return await this.recalculateTargetAmounts(targets);
     } catch (error) {
       throw this.handleError(error);
     }
@@ -137,16 +183,118 @@ export class SupabaseTargetRepository implements TargetRepository {
     }
   }
 
+  private async calculateCategoryTargetAmount(
+    userId: string,
+    category: string,
+    periodStart: string,
+    period: TargetPeriod
+  ): Promise<number> {
+    try {
+      // Normalize the period start date to the beginning of the period
+      const now = new Date();
+      let periodStartDate = new Date(now);
+      let periodEndDate: Date;
+
+      // Calculate period boundaries
+      switch (period) {
+        case 'daily':
+          // Start from beginning of current day
+          periodStartDate.setHours(0, 0, 0, 0);
+          periodEndDate = new Date(periodStartDate);
+          periodEndDate.setDate(periodEndDate.getDate() + 1);
+          break;
+        case 'weekly':
+          // Start from beginning of current week (assuming Monday is first day)
+          const day = periodStartDate.getDay();
+          const diff = periodStartDate.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+          periodStartDate = new Date(periodStartDate.setDate(diff));
+          periodStartDate.setHours(0, 0, 0, 0);
+          periodEndDate = new Date(periodStartDate);
+          periodEndDate.setDate(periodEndDate.getDate() + 7);
+          break;
+        case 'monthly':
+          // Start from beginning of current month
+          periodStartDate.setDate(1);
+          periodStartDate.setHours(0, 0, 0, 0);
+          periodEndDate = new Date(periodStartDate);
+          periodEndDate.setMonth(periodEndDate.getMonth() + 1);
+          break;
+        case 'yearly':
+          // Start from beginning of current year
+          periodStartDate = new Date(periodStartDate.getFullYear(), 0, 1);
+          periodEndDate = new Date(periodStartDate);
+          periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
+          break;
+      }
+
+      console.log('[TargetRepository] Calculating amount for period:', {
+        category,
+        periodStart: periodStartDate,
+        periodEnd: periodEndDate,
+        period,
+      });
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('user_id', userId)
+        .eq('transaction_category', category)
+        .gte('timestamp', periodStartDate.toISOString())
+        .lt('timestamp', periodEndDate.toISOString());
+
+      if (error) throw this.handleError(error);
+
+      const total = data?.reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0) || 0;
+      console.log('[TargetRepository] Calculated amount:', {
+        category,
+        total,
+        transactionCount: data?.length,
+        firstTransaction: data?.[0],
+        lastTransaction: data?.[data?.length - 1],
+      });
+
+      return total;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
   async createCategoryTarget(target: CreateCategoryTargetInput): Promise<CategoryTarget> {
     try {
-      const { data, error } = await supabase
+      const user = await authRepository.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // First create the target
+      const { data: newTarget, error: createError } = await supabase
         .from('category_targets')
-        .insert([target])
+        .insert([{ ...target, user_id: user.id }])
         .select()
         .single();
 
-      if (error) throw this.handleError(error);
-      return data;
+      if (createError) throw this.handleError(createError);
+
+      // Calculate initial amount based on existing transactions
+      const currentAmount = await this.calculateCategoryTargetAmount(
+        user.id,
+        target.category,
+        newTarget.period_start,
+        target.period
+      );
+
+      // Update the target with the calculated amount if it's not zero
+      if (currentAmount > 0) {
+        const { data: updatedTarget, error: updateError } = await supabase
+          .from('category_targets')
+          .update({ current_amount: currentAmount })
+          .eq('id', newTarget.id)
+          .select()
+          .single();
+
+        if (updateError) throw this.handleError(updateError);
+        return updatedTarget;
+      }
+
+      return newTarget;
     } catch (error) {
       throw this.handleError(error);
     }
@@ -351,6 +499,78 @@ export class SupabaseTargetRepository implements TargetRepository {
           color: a.color,
         })),
       };
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async recategorizeTransactions(): Promise<void> {
+    try {
+      const user = await authRepository.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Get all transactions
+      const { data: transactions, error: fetchError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (fetchError) throw this.handleError(fetchError);
+      if (!transactions) return;
+
+      console.log('[TargetRepository] Recategorizing transactions:', {
+        total: transactions.length,
+        uncategorized: transactions.filter(
+          (t) => !t.transaction_category || t.transaction_category === 'Uncategorized'
+        ).length,
+      });
+
+      // Get merchant patterns
+      const { data: patterns, error: patternsError } = await supabase
+        .from('merchant_categories')
+        .select('*');
+
+      if (patternsError) throw this.handleError(patternsError);
+      if (!patterns) return;
+
+      // Update transactions in batches
+      const batchSize = 100;
+      for (let i = 0; i < transactions.length; i += batchSize) {
+        const batch = transactions.slice(i, i + batchSize);
+        const updates = batch.map((transaction) => {
+          const description = (transaction.description || '').toUpperCase();
+          const merchantName = (transaction.merchant_name || '').toUpperCase();
+
+          // Find matching pattern
+          const matchingPattern = patterns.find((pattern) => {
+            const patternParts = pattern.merchant_pattern.split('|');
+            return patternParts.some(
+              (p) => description.includes(p.toUpperCase()) || merchantName.includes(p.toUpperCase())
+            );
+          });
+
+          return {
+            id: transaction.id,
+            transaction_category: matchingPattern?.category || 'Uncategorized',
+          };
+        });
+
+        // Update transactions that have a new category
+        const toUpdate = updates.filter(
+          (u) =>
+            u.transaction_category !== 'Uncategorized' &&
+            u.transaction_category !== batch.find((t) => t.id === u.id)?.transaction_category
+        );
+
+        if (toUpdate.length > 0) {
+          const { error: updateError } = await supabase.from('transactions').upsert(toUpdate);
+
+          if (updateError) throw this.handleError(updateError);
+          console.log(
+            `[TargetRepository] Updated ${toUpdate.length} transactions in batch ${i / batchSize + 1}`
+          );
+        }
+      }
     } catch (error) {
       throw this.handleError(error);
     }

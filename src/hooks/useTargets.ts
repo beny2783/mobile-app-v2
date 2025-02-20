@@ -36,6 +36,7 @@ interface UseTargetsResult {
     target: UpdateCategoryTargetInput
   ) => Promise<CategoryTarget>;
   deleteCategoryTarget: (category: string) => Promise<void>;
+  refreshCategoryTargets: () => Promise<void>;
 
   // Achievement operations
   achievements: TargetAchievement[];
@@ -49,6 +50,9 @@ interface UseTargetsResult {
   // Summary operations
   targetSummary: TargetSummary | null;
   refreshSummary: () => Promise<void>;
+
+  // Recategorization operations
+  recategorizeTransactions: () => Promise<void>;
 }
 
 export function useTargets(): UseTargetsResult {
@@ -138,10 +142,7 @@ export function useTargets(): UseTargetsResult {
       if (!user) throw new Error('User not authenticated');
 
       try {
-        const newTarget = await targetRepository.createCategoryTarget({
-          ...target,
-          user_id: user.id,
-        });
+        const newTarget = await targetRepository.createCategoryTarget(target);
         setCategoryTargets((prev) => [...prev, newTarget]);
         return newTarget;
       } catch (err) {
@@ -283,6 +284,16 @@ export function useTargets(): UseTargetsResult {
     }
   }, [user]);
 
+  // Recategorization operations
+  const recategorizeTransactions = useCallback(async () => {
+    try {
+      await targetRepository.recategorizeTransactions();
+    } catch (err) {
+      console.error('Failed to recategorize transactions:', err);
+      throw err;
+    }
+  }, []);
+
   // Initial data loading
   useEffect(() => {
     if (user) {
@@ -316,6 +327,7 @@ export function useTargets(): UseTargetsResult {
     createCategoryTarget,
     updateCategoryTarget,
     deleteCategoryTarget,
+    refreshCategoryTargets,
 
     // Achievement operations
     achievements,
@@ -329,5 +341,8 @@ export function useTargets(): UseTargetsResult {
     // Summary operations
     targetSummary,
     refreshSummary,
+
+    // Recategorization operations
+    recategorizeTransactions,
   };
 }

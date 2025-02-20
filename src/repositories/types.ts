@@ -82,6 +82,9 @@ export interface TargetRepository {
 
   // Summary operations
   getTargetSummary(userId: string): Promise<TargetSummary>;
+
+  // Recategorization operations
+  recategorizeTransactions(): Promise<void>;
 }
 
 export interface RepositoryError extends Error {
