@@ -7,26 +7,17 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { useTargets } from '../hooks/useTargets';
+import { useBudget } from '../store/slices/budget/hooks';
 import { TargetType, TargetPeriod } from '../types/target';
 import { Card } from './Card';
 import { colors } from '../theme';
 
-export function TargetDashboard() {
-  const {
-    targets,
-    categoryTargets,
-    targetSummary,
-    isLoading,
-    error,
-    createTarget,
-    updateTarget,
-    deleteTarget,
-  } = useTargets();
+export const TargetDashboard: React.FC = () => {
+  const { categoryTargets, targetSummary, loading, error } = useBudget();
 
   const [isAddingTarget, setIsAddingTarget] = useState(false);
 
-  if (isLoading) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -153,7 +144,7 @@ export function TargetDashboard() {
       )}
     </ScrollView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {

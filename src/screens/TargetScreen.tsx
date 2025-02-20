@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
-import { useTargets } from '../hooks/useTargets';
+import { useBudget } from '../store/slices/budget/hooks';
+import { useAuth } from '../store/slices/auth/hooks';
 import { CategoryTarget } from '../types/target';
 import { CategoryBudgetList } from '../components/budget/CategoryBudgetList';
 import { BudgetSettingModal } from '../components/budget/BudgetSettingModal';
@@ -19,14 +20,15 @@ import { CategoryDetailModal } from '../components/budget/CategoryDetailModal';
 const { width } = Dimensions.get('window');
 
 export default function BudgetScreen() {
+  const { user } = useAuth();
   const {
     categoryTargets,
-    isLoading,
+    loading: isLoading,
     error,
-    createCategoryTarget,
-    updateCategoryTarget,
-    deleteCategoryTarget,
-  } = useTargets();
+    createTarget: createCategoryTarget,
+    updateTarget: updateCategoryTarget,
+    deleteTarget: deleteCategoryTarget,
+  } = useBudget();
 
   const [isSettingModalVisible, setIsSettingModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<CategoryTarget | null>(null);
@@ -42,9 +44,14 @@ export default function BudgetScreen() {
   const handleCreateTarget = async (
     target: Omit<CategoryTarget, 'id' | 'user_id' | 'created_at' | 'updated_at'>
   ) => {
+    if (!user) {
+      console.error('[TargetScreen] No user found, cannot create target');
+      return;
+    }
+
     try {
       console.log('[TargetScreen] Creating new target:', target);
-      await createCategoryTarget(target);
+      await createCategoryTarget({ ...target, user_id: user.id });
       console.log('[TargetScreen] Target created successfully');
       setIsSettingModalVisible(false);
     } catch (err) {
@@ -54,14 +61,14 @@ export default function BudgetScreen() {
   };
 
   const handleUpdateTarget = async (category: string, updates: Partial<CategoryTarget>) => {
+    if (!user) {
+      console.error('[TargetScreen] No user found, cannot update target');
+      return;
+    }
+
     try {
-      console.log(
-        '[TargetScreen] Updating target for category:',
-        category,
-        'with updates:',
-        updates
-      );
-      await updateCategoryTarget(category, updates);
+      console.log('[TargetScreen] Updating target:', { category, updates });
+      await updateCategoryTarget(user.id, category, updates);
       console.log('[TargetScreen] Target updated successfully');
       setIsDetailModalVisible(false);
       setSelectedCategory(null);
@@ -72,9 +79,14 @@ export default function BudgetScreen() {
   };
 
   const handleDeleteTarget = async (category: string) => {
+    if (!user) {
+      console.error('[TargetScreen] No user found, cannot delete target');
+      return;
+    }
+
     try {
-      console.log('[TargetScreen] Deleting target for category:', category);
-      await deleteCategoryTarget(category);
+      console.log('[TargetScreen] Deleting target:', category);
+      await deleteCategoryTarget(user.id, category);
       console.log('[TargetScreen] Target deleted successfully');
       setIsDetailModalVisible(false);
       setSelectedCategory(null);

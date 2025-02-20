@@ -10,86 +10,122 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
-import { useTargets } from '../hooks/useTargets';
 import { CategoryTarget } from '../types/target';
 import { CategoryBudgetList } from '../components/budget/CategoryBudgetList';
 import { BudgetSettingModal } from '../components/budget/BudgetSettingModal';
 import { CategoryDetailModal } from '../components/budget/CategoryDetailModal';
+import { useBudget } from '../store/slices/budget/hooks';
+import { useAuth } from '../store/slices/auth/hooks';
 
 const { width } = Dimensions.get('window');
 
 export default function BudgetScreen() {
+  const { user } = useAuth();
   const {
     categoryTargets,
-    isLoading,
+    loading,
     error,
-    createCategoryTarget,
-    updateCategoryTarget,
-    deleteCategoryTarget,
-    refreshCategoryTargets,
-  } = useTargets();
+    createTarget,
+    updateTarget,
+    deleteTarget,
+    fetchTargets,
+  } = useBudget();
 
   const [isSettingModalVisible, setIsSettingModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<CategoryTarget | null>(null);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
 
-  // Add logging for initial data load and updates
   useEffect(() => {
-    console.log('[TargetScreen] Loaded category targets:', categoryTargets);
-    console.log('[TargetScreen] Loading state:', isLoading);
-    if (error) console.error('[TargetScreen] Error:', error);
-  }, [categoryTargets, isLoading, error]);
+    const loadBudgets = async () => {
+      if (!user) {
+        console.log('No user found, cannot fetch budgets');
+        return;
+      }
+      console.log('Fetching budgets for user:', user.id);
+      try {
+        await fetchTargets(user.id);
+      } catch (err) {
+        console.error('Error fetching budgets:', err);
+      }
+    };
 
-  // Add logging for state updates
-  useEffect(() => {
-    console.log('[BudgetScreen] Category targets updated:', categoryTargets);
-  }, [categoryTargets]);
+    loadBudgets();
+  }, [user, fetchTargets]);
 
+  // Log state changes
   useEffect(() => {
-    console.log('[BudgetScreen] Refreshing category targets');
-    refreshCategoryTargets();
-  }, []);
+    console.log('Budget state updated:', {
+      categoryTargetsCount: categoryTargets?.length,
+      loading,
+      error,
+      userId: user?.id,
+    });
+  }, [categoryTargets, loading, error, user]);
 
   const handleCreateTarget = async (
     target: Omit<CategoryTarget, 'id' | 'user_id' | 'created_at' | 'updated_at'>
   ) => {
-    console.log('[TargetScreen] Creating new target:', target);
+    if (!user) {
+      console.error('No user found, cannot create target');
+      return;
+    }
+
     try {
-      await createCategoryTarget(target);
+      console.log('Creating new target:', { ...target, userId: user.id });
+      await createTarget({ ...target, user_id: user.id });
       setIsSettingModalVisible(false);
-      refreshCategoryTargets();
+      console.log('Target created, refreshing budgets...');
+      await fetchTargets(user.id);
     } catch (error) {
-      console.error('[TargetScreen] Error creating target:', error);
+      console.error('Failed to create target:', error);
     }
   };
 
   const handleUpdateTarget = async (category: string, updates: Partial<CategoryTarget>) => {
-    console.log('[TargetScreen] Updating target for category:', category, 'with updates:', updates);
+    if (!user) {
+      console.error('No user found, cannot update target');
+      return;
+    }
+
     try {
-      await updateCategoryTarget(category, updates);
-      console.log('[TargetScreen] Target updated successfully');
+      console.log('Updating target:', { category, updates, userId: user.id });
+      await updateTarget(user.id, category, updates);
       setIsDetailModalVisible(false);
       setSelectedCategory(null);
-      refreshCategoryTargets();
+      console.log('Target updated, refreshing budgets...');
+      await fetchTargets(user.id);
     } catch (error) {
-      console.error('[TargetScreen] Error updating target:', error);
+      console.error('Failed to update target:', error);
     }
   };
 
   const handleDeleteTarget = async (category: string) => {
-    console.log('[TargetScreen] Deleting target for category:', category);
+    if (!user) {
+      console.error('No user found, cannot delete target');
+      return;
+    }
+
     try {
-      await deleteCategoryTarget(category);
-      console.log('[TargetScreen] Target deleted successfully');
+      console.log('Deleting target:', { category, userId: user.id });
+      await deleteTarget(user.id, category);
       setIsDetailModalVisible(false);
       setSelectedCategory(null);
-      refreshCategoryTargets();
+      console.log('Target deleted, refreshing budgets...');
+      await fetchTargets(user.id);
     } catch (error) {
-      console.error('[TargetScreen] Error deleting target:', error);
+      console.error('Failed to delete target:', error);
     }
   };
 
-  if (isLoading) {
+  if (!user) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.error}>Please sign in to view budgets</Text>
+      </View>
+    );
+  }
+
+  if (loading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -100,7 +136,10 @@ export default function BudgetScreen() {
   if (error) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.error}>{error.message}</Text>
+        <Text style={styles.error}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => fetchTargets(user.id)}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -116,14 +155,26 @@ export default function BudgetScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Empty State */}
+        {(!categoryTargets || categoryTargets.length === 0) && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No budget targets set</Text>
+            <Text style={styles.emptyStateSubtext}>
+              Tap the + button to create your first budget target
+            </Text>
+          </View>
+        )}
+
         {/* Category Budget List */}
-        <CategoryBudgetList
-          categoryTargets={categoryTargets}
-          onCategoryPress={(category) => {
-            setSelectedCategory(category);
-            setIsDetailModalVisible(true);
-          }}
-        />
+        {categoryTargets && categoryTargets.length > 0 && (
+          <CategoryBudgetList
+            categoryTargets={categoryTargets}
+            onCategoryPress={(category) => {
+              setSelectedCategory(category);
+              setIsDetailModalVisible(true);
+            }}
+          />
+        )}
       </ScrollView>
 
       {/* Budget Setting Modal */}
@@ -160,25 +211,57 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  error: {
-    color: colors.error,
-    textAlign: 'center',
-    marginHorizontal: 20,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   title: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: colors.text.primary,
   },
   addButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  error: {
+    color: colors.error,
+    fontSize: 16,
+    textAlign: 'center',
+    padding: 16,
+  },
+  retryButton: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: colors.text.primary,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
 });

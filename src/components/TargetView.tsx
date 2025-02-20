@@ -14,21 +14,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
 import { LineChart } from 'react-native-chart-kit';
 import Slider from '@react-native-community/slider';
-import { useTargets } from '../hooks/useTargets';
+import { useBudget } from '../store/slices/budget/hooks';
+import { CategoryTarget } from '../types/target';
 
 const { width } = Dimensions.get('window');
 
 export const TargetView: React.FC = () => {
   const {
-    targets,
     categoryTargets,
     targetSummary,
-    isLoading,
+    loading,
     error,
+    createTarget,
     updateTarget,
-    updateCategoryTarget,
-    createCategoryTarget,
-  } = useTargets();
+    deleteTarget,
+  } = useBudget();
 
   const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
   const [selectedPoint, setSelectedPoint] = useState<{
@@ -64,7 +64,7 @@ export const TargetView: React.FC = () => {
 
   const handleTargetChange = async (category: string, newLimit: number): Promise<void> => {
     try {
-      await updateCategoryTarget(category, { target_limit: Math.round(newLimit) });
+      await updateTarget(category, { target_limit: Math.round(newLimit) });
     } catch (err) {
       console.error('Failed to update category target:', err);
     }
@@ -72,7 +72,7 @@ export const TargetView: React.FC = () => {
 
   const handleCreateTarget = async () => {
     try {
-      await createCategoryTarget({
+      await createTarget({
         category: newTarget.category,
         target_limit: newTarget.target_limit,
         min_limit: newTarget.min_limit,
@@ -93,7 +93,7 @@ export const TargetView: React.FC = () => {
     }
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -270,7 +270,7 @@ export const TargetView: React.FC = () => {
             <Ionicons name="add-circle-outline" size={24} color="#FFF" />
           </TouchableOpacity>
         </View>
-        {categoryTargets.map((target) => (
+        {categoryTargets.map((target: CategoryTarget) => (
           <View key={target.id} style={styles.categoryCard}>
             <TouchableOpacity
               style={styles.categoryHeader}
@@ -315,13 +315,13 @@ export const TargetView: React.FC = () => {
             {editingTarget === target.category && (
               <View style={styles.sliderContainer}>
                 <View style={styles.sliderLabels}>
-                  <Text style={styles.sliderLabel}>{formatAmount(target.min_limit)}</Text>
-                  <Text style={styles.sliderLabel}>{formatAmount(target.max_limit)}</Text>
+                  <Text style={styles.sliderLabel}>{formatAmount(0)}</Text>
+                  <Text style={styles.sliderLabel}>{formatAmount(target.target_limit * 2)}</Text>
                 </View>
                 <Slider
                   style={styles.slider}
-                  minimumValue={target.min_limit}
-                  maximumValue={target.max_limit}
+                  minimumValue={0}
+                  maximumValue={target.target_limit * 2}
                   value={target.target_limit}
                   onValueChange={(value) => handleTargetChange(target.category, value)}
                   minimumTrackTintColor={target.color}
@@ -344,19 +344,31 @@ export const TargetView: React.FC = () => {
         <View style={styles.achievements}>
           <Text style={styles.sectionTitle}>Recent Achievements</Text>
           <View style={styles.achievementsList}>
-            {targetSummary.achievements.map((achievement, index) => (
-              <View key={index} style={styles.achievementCard}>
-                <View
-                  style={[styles.achievementIcon, { backgroundColor: `${achievement.color}33` }]}
-                >
-                  <Ionicons name={achievement.icon as any} size={24} color={achievement.color} />
+            {targetSummary.achievements.map(
+              (
+                achievement: {
+                  category: string;
+                  percentage: number;
+                  color: string;
+                  icon: string;
+                  title: string;
+                  description: string;
+                },
+                index: number
+              ) => (
+                <View key={index} style={styles.achievementCard}>
+                  <View
+                    style={[styles.achievementIcon, { backgroundColor: `${achievement.color}33` }]}
+                  >
+                    <Ionicons name={achievement.icon as any} size={24} color={achievement.color} />
+                  </View>
+                  <View style={styles.achievementContent}>
+                    <Text style={styles.achievementTitle}>{achievement.title}</Text>
+                    <Text style={styles.achievementDescription}>{achievement.description}</Text>
+                  </View>
                 </View>
-                <View style={styles.achievementContent}>
-                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
-                  <Text style={styles.achievementDescription}>{achievement.description}</Text>
-                </View>
-              </View>
-            ))}
+              )
+            )}
           </View>
         </View>
       )}

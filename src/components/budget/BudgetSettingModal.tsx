@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { colors } from '../../constants/theme';
 import { CategoryTarget, TargetPeriod } from '../../types/target';
 import ColorPicker from 'react-native-wheel-color-picker';
 import { useTransactions } from '../../hooks/useTransactions';
+import { useBudget } from '../../store/slices/budget/hooks';
 
 interface BudgetSettingModalProps {
   isVisible: boolean;
@@ -30,19 +31,12 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
   onSubmit,
 }) => {
   const { categories, loading: isCategoriesLoading } = useTransactions();
+  const { loading: isBudgetLoading } = useBudget();
   const [selectedCategory, setSelectedCategory] = useState('');
   const [targetLimit, setTargetLimit] = useState('');
   const [period, setPeriod] = useState<TargetPeriod>('monthly');
   const [color, setColor] = useState('#4CAF50');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Log when modal becomes visible
-  React.useEffect(() => {
-    console.log('[BudgetSettingModal] Modal visibility changed:', isVisible);
-    if (isVisible) {
-      console.log('[BudgetSettingModal] Available categories:', categories);
-    }
-  }, [isVisible, categories]);
 
   const periodOptions: { label: string; value: TargetPeriod }[] = [
     { label: 'Daily', value: 'daily' },
@@ -52,15 +46,7 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
   ];
 
   const handleSubmit = async () => {
-    console.log('[BudgetSettingModal] Attempting to submit form with values:', {
-      selectedCategory,
-      targetLimit,
-      period,
-      color,
-    });
-
     if (!selectedCategory) {
-      console.warn('[BudgetSettingModal] Submission failed: No category selected');
       Alert.alert('Error', 'Please select a category');
       return;
     }
@@ -68,14 +54,12 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
     const target = parseFloat(targetLimit);
 
     if (isNaN(target) || target <= 0) {
-      console.warn('[BudgetSettingModal] Submission failed: Invalid target amount');
       Alert.alert('Error', 'Please enter a valid target amount');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      console.log('[BudgetSettingModal] Submitting budget target...');
       await onSubmit({
         category: selectedCategory,
         target_limit: target,
@@ -84,10 +68,9 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
         period,
         period_start: new Date().toISOString(),
       });
-      console.log('[BudgetSettingModal] Budget target submitted successfully');
       handleClose();
     } catch (error) {
-      console.error('[BudgetSettingModal] Failed to create budget target:', error);
+      console.error('Failed to create budget target:', error);
       Alert.alert('Error', 'Failed to create budget target. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -95,7 +78,6 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
   };
 
   const handleClose = () => {
-    console.log('[BudgetSettingModal] Closing modal and resetting form');
     setSelectedCategory('');
     setTargetLimit('');
     setPeriod('monthly');
@@ -182,9 +164,9 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
                 style={styles.input}
                 value={targetLimit}
                 onChangeText={setTargetLimit}
+                keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor={colors.text.secondary}
-                keyboardType="decimal-pad"
               />
             </View>
 
@@ -195,7 +177,7 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
                   color={color}
                   onColorChange={setColor}
                   thumbSize={30}
-                  sliderSize={30}
+                  sliderSize={20}
                   noSnap={true}
                   row={false}
                 />
@@ -203,9 +185,12 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
             </View>
 
             <TouchableOpacity
-              style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+              style={[
+                styles.submitButton,
+                (isSubmitting || isBudgetLoading) && styles.submitButtonDisabled,
+              ]}
               onPress={handleSubmit}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isBudgetLoading}
             >
               <Text style={styles.submitButtonText}>
                 {isSubmitting ? 'Creating...' : 'Create Budget Target'}

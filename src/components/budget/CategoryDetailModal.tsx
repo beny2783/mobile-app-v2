@@ -16,6 +16,7 @@ import { CategoryTarget, TargetPeriod } from '../../types/target';
 import { LineChart } from 'react-native-chart-kit';
 import { useTransactions } from '../../hooks/useTransactions';
 import { formatPeriod, getTimeRemaining } from '../../utils/dateUtils';
+import { useBudget } from '../../store/slices/budget/hooks';
 
 const { width } = Dimensions.get('window');
 
@@ -35,6 +36,7 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
   onDelete,
 }) => {
   const { transactions } = useTransactions();
+  const { targetSummary } = useBudget();
   const [isEditing, setIsEditing] = useState(false);
   const [targetLimit, setTargetLimit] = useState(category.target_limit.toString());
   const [period, setPeriod] = useState<TargetPeriod>(category.period);
@@ -57,134 +59,25 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
     const labels: string[] = [];
     const data: number[] = [];
 
-    switch (category.period) {
-      case 'daily':
-        // Show hourly data for the current day
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+    // Filter transactions for this category
+    const categoryTransactions = transactions.filter(
+      (t) =>
+        t.transaction_category === category.category && new Date(t.timestamp) >= currentMonthStart
+    );
 
-        for (let i = 0; i < 24; i++) {
-          const hourStart = new Date(today);
-          hourStart.setHours(i, 0, 0, 0);
-          const hourEnd = new Date(today);
-          hourEnd.setHours(i, 59, 59, 999);
+    // Group transactions by date
+    const spendingByDate = new Map<string, number>();
+    categoryTransactions.forEach((t) => {
+      const date = new Date(t.timestamp);
+      const dateKey = date.toLocaleDateString('en-GB', { weekday: 'short' });
+      const currentAmount = spendingByDate.get(dateKey) || 0;
+      spendingByDate.set(dateKey, currentAmount + Math.abs(t.amount));
+    });
 
-          labels.push(`${i.toString().padStart(2, '0')}:00`);
-          const hourlySpending = transactions
-            .filter(
-              (t) =>
-                t.transaction_category === category.category &&
-                new Date(t.timestamp) >= hourStart &&
-                new Date(t.timestamp) <= hourEnd
-            )
-            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-          data.push(hourlySpending);
-        }
-        break;
-
-      case 'weekly':
-        // Show daily data for the current week
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1)); // Start from Monday
-        weekStart.setHours(0, 0, 0, 0);
-
-        for (let i = 0; i < 7; i++) {
-          const dayStart = new Date(weekStart);
-          dayStart.setDate(weekStart.getDate() + i);
-          const dayEnd = new Date(dayStart);
-          dayEnd.setHours(23, 59, 59, 999);
-
-          labels.push(dayStart.toLocaleDateString('en-GB', { weekday: 'short' }));
-          const dailySpending = transactions
-            .filter(
-              (t) =>
-                t.transaction_category === category.category &&
-                new Date(t.timestamp) >= dayStart &&
-                new Date(t.timestamp) <= dayEnd
-            )
-            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-          data.push(dailySpending);
-        }
-        break;
-
-      case 'monthly':
-        // Calculate the start of each week in the current month
-        for (let i = 0; i < 4; i++) {
-          const weekStart = new Date(currentMonthStart);
-          weekStart.setDate(currentMonthStart.getDate() + i * 7);
-          weekStart.setHours(0, 0, 0, 0);
-
-          const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekStart.getDate() + 6);
-          weekEnd.setHours(23, 59, 59, 999);
-
-          // Only include transactions up to current date for future weeks
-          const effectiveEndDate = weekEnd > now ? now : weekEnd;
-
-          labels.push(`Week ${i + 1}`);
-
-          const weeklySpending = transactions
-            .filter(
-              (t) =>
-                t.transaction_category === category.category &&
-                new Date(t.timestamp) >= weekStart &&
-                new Date(t.timestamp) <= effectiveEndDate
-            )
-            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-          data.push(weeklySpending);
-
-          // Add debug logging
-          console.log(`Week ${i + 1} spending:`, {
-            weekStart: weekStart.toISOString(),
-            weekEnd: effectiveEndDate.toISOString(),
-            spending: weeklySpending,
-            transactionCount: transactions.filter(
-              (t) =>
-                t.transaction_category === category.category &&
-                new Date(t.timestamp) >= weekStart &&
-                new Date(t.timestamp) <= effectiveEndDate
-            ).length,
-            transactions: transactions.filter(
-              (t) =>
-                t.transaction_category === category.category &&
-                new Date(t.timestamp) >= weekStart &&
-                new Date(t.timestamp) <= effectiveEndDate
-            ),
-          });
-        }
-        break;
-
-      case 'yearly':
-        // Show monthly data for the current year
-        const yearStart = new Date(now.getFullYear(), 0, 1);
-
-        for (let i = 0; i < 12; i++) {
-          const monthStart = new Date(yearStart.getFullYear(), i, 1);
-          const monthEnd = new Date(yearStart.getFullYear(), i + 1, 0, 23, 59, 59, 999);
-          const effectiveEndDate = monthEnd > now ? now : monthEnd;
-
-          labels.push(monthStart.toLocaleDateString('en-GB', { month: 'short' }));
-          const monthlySpending = transactions
-            .filter(
-              (t) =>
-                t.transaction_category === category.category &&
-                new Date(t.timestamp) >= monthStart &&
-                new Date(t.timestamp) <= effectiveEndDate
-            )
-            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-          data.push(monthlySpending);
-        }
-        break;
-    }
-
-    // Add debug logging for final chart data
-    console.log('Chart data:', {
-      labels,
-      data,
-      transactionCount: transactions.length,
-      categoryTransactions: transactions.filter((t) => t.transaction_category === category.category)
-        .length,
+    // Convert to arrays for the chart
+    Array.from(spendingByDate.entries()).forEach(([date, amount]) => {
+      labels.push(date);
+      data.push(amount);
     });
 
     return {
@@ -192,8 +85,6 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
       datasets: [
         {
           data,
-          color: (opacity = 1) => `rgba(46, 196, 182, ${opacity})`,
-          strokeWidth: 2,
         },
       ],
     };

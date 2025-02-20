@@ -1,6 +1,6 @@
 # State Management Migration Guide
 
-## Current State Analysis
+## Current State Analysis ✅
 
 ### Identified Issues
 
@@ -11,7 +11,7 @@
 
 ## Migration Plan
 
-### 1. Setup Redux Toolkit Infrastructure
+### 1. Setup Redux Toolkit Infrastructure ✅
 
 ```typescript
 // src/store/index.ts
@@ -24,10 +24,10 @@ export const store = configureStore({
     auth: authReducer,
     ui: uiReducer,
 
-    // Feature slices
+    // Feature slices (To be implemented)
     budget: budgetReducer,
     accounts: accountsReducer,
-    transactions: transactionsReducer,
+    transactions: transactionReducer,
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(logger),
 });
@@ -38,7 +38,7 @@ export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
 ```
 
-### 2. Create Type-Safe Hooks
+### 2. Create Type-Safe Hooks ✅
 
 ```typescript
 // src/store/hooks.ts
@@ -49,152 +49,81 @@ export const useAppDispatch = () => useDispatch<AppDispatch>();
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 ```
 
-### 3. Feature State Migration Example (Budget)
+### 3. Feature State Migration Progress
 
-```typescript
-// src/store/slices/budget/types.ts
-export interface Budget {
-  id: string;
-  name: string;
-  amount: number;
-  period: 'monthly' | 'weekly' | 'yearly';
-  categoryId: string;
-}
+#### Completed Features ✅
 
-export interface BudgetState {
-  items: Budget[];
-  loading: boolean;
-  error: string | null;
-  selectedBudgetId: string | null;
-}
+- Auth Slice
+  - User authentication state
+  - Session management
+  - Loading states
+  - Error handling
+- UI Slice
+  - Global loading state
+  - Global error handling
 
-// src/store/slices/budget/slice.ts
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import type { BudgetState } from './types';
+#### Pending Features
 
-const initialState: BudgetState = {
-  items: [],
-  loading: false,
-  error: null,
-  selectedBudgetId: null,
-};
+- Budget Slice
+  - Budget tracking
+  - Budget categories
+  - Budget limits
+- Accounts Slice
+  - Bank connections
+  - Account balances
+  - Account metadata
+- Transactions Slice
+  - Transaction history
+  - Transaction categories
+  - Transaction search/filter
 
-export const fetchBudgets = createAsyncThunk(
-  'budget/fetchBudgets',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await budgetService.getBudgets();
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
+### 4. Component Migration Progress
 
-export const budgetSlice = createSlice({
-  name: 'budget',
-  initialState,
-  reducers: {
-    selectBudget: (state, action) => {
-      state.selectedBudgetId = action.payload;
-    },
-    clearSelectedBudget: (state) => {
-      state.selectedBudgetId = null;
-    },
-  },
-  extraReducers: (builder) => {
-    builder
-      .addCase(fetchBudgets.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchBudgets.fulfilled, (state, action) => {
-        state.loading = false;
-        state.items = action.payload;
-      })
-      .addCase(fetchBudgets.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      });
-  },
-});
-```
+#### Completed Components ✅
 
-### 4. Component Migration Example
+- AuthScreen
+- GlobalLoadingIndicator
+- HomeHeader
+- MainScreen
+- ProfileScreen
 
-Before:
+#### Pending Components
 
-```typescript
-const BudgetList = () => {
-  const [budgets, setBudgets] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const fetchBudgets = async () => {
-      setLoading(true);
-      try {
-        const data = await budgetService.getBudgets();
-        setBudgets(data);
-      } catch (err) {
-        setError(err.message);
-      }
-      setLoading(false);
-    };
-    fetchBudgets();
-  }, []);
-
-  // ... rest of component
-};
-```
-
-After:
-
-```typescript
-const BudgetList = () => {
-  const dispatch = useAppDispatch();
-  const { items: budgets, loading, error } = useAppSelector((state) => state.budget);
-
-  useEffect(() => {
-    dispatch(fetchBudgets());
-  }, [dispatch]);
-
-  // ... rest of component
-};
-```
+- BudgetList
+- TransactionList
+- AccountList
+- CategorySelectionModal
+- TransactionFilters
 
 ## Migration Steps
 
-### Phase 1: Infrastructure (Week 1)
+### Phase 1: Infrastructure (Week 1) ✅
 
-1. Install dependencies:
-   ```bash
-   npm install @reduxjs/toolkit react-redux
-   ```
-2. Set up store configuration
-3. Create type-safe hooks
-4. Add provider to app root
+1. ✅ Install dependencies
+2. ✅ Set up store configuration
+3. ✅ Create type-safe hooks
+4. ✅ Add provider to app root
 
-### Phase 2: Feature Migration (Weeks 2-3)
+### Phase 2: Feature Migration (Weeks 2-3) 🔄
 
-1. Identify state dependencies in each feature
-2. Create state slices for each feature
-3. Create async thunks for API calls
-4. Add selectors for state access
+1. ✅ Identify state dependencies in each feature
+2. ✅ Create auth and UI slices
+3. 🔄 Create remaining feature slices
+4. 🔄 Add selectors for state access
 
-### Phase 3: Component Updates (Weeks 3-4)
+### Phase 3: Component Updates (Weeks 3-4) 🔄
 
-1. Replace useState/useContext with Redux hooks
-2. Update component props if needed
-3. Remove unnecessary prop drilling
-4. Clean up unused context providers
+1. ✅ Replace useState/useContext with Redux hooks in auth components
+2. 🔄 Update remaining component props
+3. 🔄 Remove unnecessary prop drilling
+4. 🔄 Clean up unused context providers
 
-### Phase 4: Testing & Validation (Week 4)
+### Phase 4: Testing & Validation (Week 4) 🔄
 
-1. Add unit tests for reducers
-2. Add integration tests for async actions
-3. Verify state updates in components
-4. Performance testing
+1. ✅ Add unit tests for auth reducers
+2. ✅ Add integration tests for auth actions
+3. 🔄 Add tests for remaining features
+4. 🔄 Performance testing
 
 ## Best Practices
 
@@ -225,17 +154,22 @@ const BudgetList = () => {
 
 For each component:
 
-- [ ] Identify state dependencies
-- [ ] Create/update relevant slice
-- [ ] Replace local state
-- [ ] Update props interface
-- [ ] Add/update tests
+- [x] Identify state dependencies
+- [x] Create/update auth slice
+- [x] Create/update UI slice
+- [ ] Create/update budget slice
+- [ ] Create/update accounts slice
+- [ ] Create/update transactions slice
+- [x] Replace local state in auth components
+- [ ] Update remaining props interfaces
+- [x] Add/update auth tests
+- [ ] Add/update remaining tests
 - [ ] Verify performance
 - [ ] Remove unused code
 
 ## Common Patterns
 
-### Loading States
+### Loading States ✅
 
 ```typescript
 // Before
@@ -245,7 +179,7 @@ const [loading, setLoading] = useState(false);
 const loading = useAppSelector(selectIsLoading);
 ```
 
-### Error Handling
+### Error Handling ✅
 
 ```typescript
 // Before
@@ -255,7 +189,7 @@ const [error, setError] = useState(null);
 const error = useAppSelector(selectError);
 ```
 
-### Data Fetching
+### Data Fetching ✅
 
 ```typescript
 // Before
@@ -275,3 +209,125 @@ useEffect(() => {
 2. Implement feature flags for gradual rollout
 3. Maintain ability to switch between old/new implementations
 4. Document all changes for easy reversal if needed
+
+## Pending Feature Implementations
+
+### 1. Budget Slice
+
+- **Status**: 🔄 In Progress
+- **Dependencies**:
+  - Transaction data
+  - Category management
+  - User preferences
+- **Will Replace**:
+  - `src/hooks/useTargets.ts`
+  - `src/contexts/BudgetContext.tsx`
+  - Budget-related state in components:
+    - `src/components/BudgetList.tsx`
+    - `src/components/BudgetCard.tsx`
+    - `src/screens/BudgetScreen.tsx`
+
+### 2. Accounts Slice
+
+- **Status**: 📝 Planned
+- **Dependencies**:
+  - Bank connection data
+  - Balance information
+  - Account metadata
+- **Will Replace**:
+  - `src/contexts/ServiceContext.tsx` (partially)
+  - `src/hooks/useBankConnections.ts`
+  - Account-related state in:
+    - `src/screens/ConnectBankScreen.tsx`
+    - `src/components/AccountList.tsx`
+    - `src/components/AccountCard.tsx`
+
+### 3. Transactions Slice
+
+- **Status**: 📝 Planned
+- **Dependencies**:
+  - Transaction history
+  - Categories
+  - Search/filter preferences
+- **Will Replace**:
+  - `src/services/trueLayer/transaction/TrueLayerTransactionService.ts`
+  - `src/contexts/TransactionContext.tsx`
+  - Transaction-related state in:
+    - `src/screens/TransactionsScreen.tsx`
+    - `src/components/TransactionList.tsx`
+    - `src/components/TransactionFilters.tsx`
+
+### 4. Subscription Management
+
+- **Status**: 📝 Planned
+- **Dependencies**:
+  - User subscription status
+  - Feature flags
+  - Payment processing
+- **Will Replace**:
+  - `src/contexts/SubscriptionContext.tsx`
+  - Subscription-related state in:
+    - `src/screens/SubscriptionScreen.tsx`
+    - `src/components/SubscriptionCard.tsx`
+
+## Code Removal Checklist
+
+### Phase 1: Context API Removal
+
+- [ ] `src/contexts/BudgetContext.tsx`
+- [ ] `src/contexts/TransactionContext.tsx`
+- [ ] `src/contexts/ServiceContext.tsx`
+- [ ] `src/contexts/SubscriptionContext.tsx`
+
+### Phase 2: Custom Hooks Removal/Refactor
+
+- [ ] `src/hooks/useTargets.ts`
+- [ ] `src/hooks/useBankConnections.ts`
+- [ ] `src/hooks/useTransactions.ts`
+- [ ] Refactor remaining hooks to use Redux
+
+### Phase 3: Service Layer Updates
+
+- [ ] Refactor `TrueLayerTransactionService` to work with Redux
+- [ ] Update repository patterns to support Redux integration
+- [ ] Remove redundant state management in services
+
+### Phase 4: Component Cleanup
+
+- [ ] Remove local state management from all feature components
+- [ ] Clean up prop drilling in component tree
+- [ ] Remove unused prop interfaces
+- [ ] Update component tests to use Redux store
+
+## Migration Progress Tracking
+
+### Completed ✅
+
+- Auth state management
+- UI state management
+- Global loading indicators
+- Error handling patterns
+
+### In Progress 🔄
+
+- Budget slice implementation
+- Component migration to Redux
+- Test coverage updates
+
+### Pending 📝
+
+- Accounts slice implementation
+- Transactions slice implementation
+- Subscription management
+- Performance optimization
+- E2E testing updates
+
+## Code Quality Metrics
+
+Track the following metrics during migration:
+
+1. Bundle size impact
+2. Test coverage percentage
+3. Number of prop drilling instances
+4. Component render performance
+5. State update performance
