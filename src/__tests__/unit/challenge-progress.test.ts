@@ -1,5 +1,5 @@
 import { ChallengeProgressCalculator } from '../../services/challenges/progress-calculator';
-import { Challenge, UserChallenge, Transaction } from '../../types/challenges';
+import { Challenge, UserChallenge, Transaction } from '../../types';
 
 describe('ChallengeProgressCalculator', () => {
   let calculator: ChallengeProgressCalculator;
@@ -25,30 +25,27 @@ describe('ChallengeProgressCalculator', () => {
       id: '1',
       name: 'No Spend Challenge',
       description: 'Avoid spending in dining',
-      type: 'daily',
-      criteria: {
-        type: 'no_spend',
-        exclude_categories: ['groceries', 'bills'],
-        max_spend: 0,
-      },
-      reward_xp: 100,
-      active: true,
-      created_at: baseDate.toISOString(),
-      updated_at: baseDate.toISOString(),
+      type: 'reduced_spending',
+      target_amount: 0,
+      category: 'dining',
+      start_date: baseDate.toISOString(),
+      end_date: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
     };
 
     it('should return completed when no spending in category', () => {
       const transactions: Transaction[] = [
         {
-          transaction_id: '1',
-          account_id: 'test-account',
-          timestamp: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-          description: 'Grocery Shopping',
+          id: '1',
+          connection_id: 'test-connection',
           amount: -50,
           currency: 'GBP',
+          description: 'Grocery Shopping',
+          merchant_name: 'Supermarket',
+          timestamp: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
           transaction_type: 'debit',
           transaction_category: 'groceries',
-          merchant_name: 'Supermarket',
+          category: 'groceries',
+          date: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
         },
       ];
 
@@ -65,15 +62,17 @@ describe('ChallengeProgressCalculator', () => {
     it('should return failed when spending in category', () => {
       const transactions: Transaction[] = [
         {
-          transaction_id: '1',
-          account_id: 'test-account',
-          timestamp: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-          description: 'Restaurant Dinner',
+          id: '1',
+          connection_id: 'test-connection',
           amount: -30,
           currency: 'GBP',
+          description: 'Restaurant Dinner',
+          merchant_name: 'Restaurant',
+          timestamp: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
           transaction_type: 'debit',
           transaction_category: 'dining',
-          merchant_name: 'Restaurant',
+          category: 'dining',
+          date: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
         },
       ];
 
@@ -89,42 +88,30 @@ describe('ChallengeProgressCalculator', () => {
   });
 
   describe('Reduced Spending Challenge', () => {
-    const reducedSpendingChallenge: Challenge = {
-      id: '2',
-      name: 'Reduced Shopping Challenge',
-      description: 'Reduce shopping expenses',
-      type: 'weekly',
-      criteria: {
-        type: 'reduced_spending',
-        reduction_target: 0.2,
-        max_spend: 100,
-      },
-      reward_xp: 200,
-      active: true,
-      created_at: baseDate.toISOString(),
-      updated_at: baseDate.toISOString(),
+    const challenge: Challenge = {
+      id: '1',
+      type: 'reduced_spending',
+      target_amount: 100,
+      category: 'groceries',
+      start_date: '2024-01-01',
+      end_date: '2024-01-31',
     };
 
     it('should return completed when spending is below target', () => {
       const transactions: Transaction[] = [
         {
-          transaction_id: '1',
-          account_id: 'test-account',
-          timestamp: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-          description: 'Clothing Store',
-          amount: -80,
+          id: '1',
+          connection_id: 'test-connection',
+          amount: 80,
           currency: 'GBP',
-          transaction_type: 'debit',
-          transaction_category: 'shopping',
-          merchant_name: 'Fashion Store',
+          description: 'Grocery Shopping',
+          timestamp: '2024-01-15T12:00:00Z',
+          category: 'groceries',
+          date: '2024-01-15',
         },
       ];
 
-      const result = calculator.calculateProgress(
-        mockUserChallenge,
-        reducedSpendingChallenge,
-        transactions
-      );
+      const result = calculator.calculateProgress(mockUserChallenge, challenge, transactions);
       expect(result.isCompleted).toBe(true);
       expect(result.isFailed).toBe(false);
       expect(result.progress.category_spent).toBe(80);
@@ -133,23 +120,18 @@ describe('ChallengeProgressCalculator', () => {
     it('should return failed when spending exceeds target', () => {
       const transactions: Transaction[] = [
         {
-          transaction_id: '1',
-          account_id: 'test-account',
-          timestamp: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-          description: 'Electronics Store',
-          amount: -120,
+          id: '1',
+          connection_id: 'test-connection',
+          amount: 120,
           currency: 'GBP',
-          transaction_type: 'debit',
-          transaction_category: 'shopping',
-          merchant_name: 'Tech Store',
+          description: 'Grocery Shopping',
+          timestamp: '2024-01-15T12:00:00Z',
+          category: 'groceries',
+          date: '2024-01-15',
         },
       ];
 
-      const result = calculator.calculateProgress(
-        mockUserChallenge,
-        reducedSpendingChallenge,
-        transactions
-      );
+      const result = calculator.calculateProgress(mockUserChallenge, challenge, transactions);
       expect(result.isCompleted).toBe(false);
       expect(result.isFailed).toBe(true);
       expect(result.progress.category_spent).toBe(120);
@@ -159,43 +141,34 @@ describe('ChallengeProgressCalculator', () => {
   describe('Edge Cases', () => {
     const noSpendChallenge: Challenge = {
       id: '1',
-      name: 'No Spend Challenge',
-      description: 'Avoid spending in dining',
-      type: 'daily',
-      criteria: {
-        type: 'no_spend',
-        exclude_categories: ['groceries', 'bills'],
-        max_spend: 0,
-      },
-      reward_xp: 100,
-      active: true,
-      created_at: baseDate.toISOString(),
-      updated_at: baseDate.toISOString(),
+      type: 'reduced_spending',
+      target_amount: 0,
+      category: 'dining',
+      start_date: baseDate.toISOString(),
+      end_date: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
     };
 
     it('should handle transactions outside challenge date range', () => {
       const transactions: Transaction[] = [
         {
-          transaction_id: '1',
-          account_id: 'test-account',
-          timestamp: new Date(baseDate.getTime() - 24 * 60 * 60 * 1000).toISOString(),
-          description: 'Before Start',
-          amount: -50,
+          id: '1',
+          connection_id: 'test-connection',
+          amount: 120,
           currency: 'GBP',
-          transaction_type: 'debit',
-          transaction_category: 'dining',
-          merchant_name: 'Restaurant',
+          description: 'Grocery Shopping',
+          timestamp: '2023-12-31T12:00:00Z',
+          category: 'groceries',
+          date: '2023-12-31',
         },
         {
-          transaction_id: '2',
-          account_id: 'test-account',
-          timestamp: new Date(baseDate.getTime() + 8 * 24 * 60 * 60 * 1000).toISOString(),
-          description: 'After End',
-          amount: -30,
+          id: '2',
+          connection_id: 'test-connection',
+          amount: 80,
           currency: 'GBP',
-          transaction_type: 'debit',
-          transaction_category: 'dining',
-          merchant_name: 'Restaurant',
+          description: 'Grocery Shopping',
+          timestamp: '2024-02-01T12:00:00Z',
+          category: 'groceries',
+          date: '2024-02-01',
         },
       ];
 
