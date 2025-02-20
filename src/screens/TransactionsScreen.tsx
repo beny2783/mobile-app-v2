@@ -82,11 +82,38 @@ export default function TransactionsScreen() {
   // Handle refresh parameter from navigation
   useEffect(() => {
     const params = route.params as { refresh?: boolean } | undefined;
+    console.log('🔄 TransactionsScreen: Navigation params received:', {
+      params,
+      shouldRefresh: params?.refresh,
+    });
+
     if (params?.refresh) {
       console.log('🔄 Refreshing transactions from navigation param');
       refresh();
     }
   }, [route.params?.refresh, refresh]);
+
+  useEffect(() => {
+    console.log('📊 TransactionsScreen: Data state updated:', {
+      transactionCount: filteredTransactions.length,
+      loading,
+      error,
+      refreshing,
+      hasFilters: {
+        category: selectedCategory !== null,
+        bank: selectedBank !== null,
+        search: searchQuery !== '',
+      },
+    });
+  }, [
+    filteredTransactions,
+    loading,
+    error,
+    refreshing,
+    selectedCategory,
+    selectedBank,
+    searchQuery,
+  ]);
 
   const handleCategoryPress = (transaction: DatabaseTransaction) => {
     setEditingTransaction(transaction);

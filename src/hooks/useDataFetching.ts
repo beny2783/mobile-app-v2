@@ -45,8 +45,15 @@ export function useDataFetching<T>(
   stateRef.current = state;
 
   // Track mount status
-  const mountedRef = useRef(true);
+  const mountedRef = useRef(false);
+
   useEffect(() => {
+    console.log('🎣 useDataFetching: Component mounted');
+    mountedRef.current = true;
+
+    // Initial fetch after mount
+    fetch(false, 0);
+
     return () => {
       console.log('🎣 useDataFetching: Cleanup - component unmounting');
       mountedRef.current = false;
@@ -56,7 +63,7 @@ export function useDataFetching<T>(
   const fetch = useCallback(
     async (isRefreshing = false, retryCount = 0) => {
       if (!mountedRef.current) {
-        console.log('🎣 useDataFetching: Skipping fetch - component unmounted');
+        console.log('🎣 useDataFetching: Skipping fetch - component not mounted');
         return;
       }
 
@@ -73,6 +80,8 @@ export function useDataFetching<T>(
 
         if (!isRefreshing) {
           setState((prev) => ({ ...prev, loading: true, error: null }));
+        } else {
+          setState((prev) => ({ ...prev, refreshing: true, error: null }));
         }
 
         const user = await authRepository.getUser();
@@ -91,104 +100,64 @@ export function useDataFetching<T>(
         });
 
         if (!mountedRef.current) {
-          console.log('🎣 useDataFetching: Skipping state update - component unmounted');
+          console.log('🎣 useDataFetching: Skipping state update - component not mounted');
           return;
         }
 
         const transformedData = optionsRef.current.transform
           ? optionsRef.current.transform(result)
           : result;
-        console.log('🔄 Data processed:', {
-          wasTransformed: !!optionsRef.current.transform,
-          rawCount: Array.isArray(result) ? result.length : 'N/A',
-          transformedCount: Array.isArray(transformedData) ? transformedData.length : 'N/A',
-        });
-
-        setState((prev) => {
-          console.log('🔄 Updating state:', {
-            previousState: {
-              loading: prev.loading,
-              error: prev.error,
-              dataExists: !!prev.data,
-            },
-            newState: {
-              loading: false,
-              error: null,
-              dataExists: !!transformedData,
-            },
-          });
-          return {
-            ...prev,
-            data: transformedData,
-            loading: false,
-            refreshing: false,
-            error: null,
-          };
-        });
-
-        optionsRef.current.onSuccess?.(transformedData);
-      } catch (error) {
-        console.error('❌ Data fetching error:', error, {
-          isRefreshing,
-          retryCount,
-        });
-
-        const errorMessage = error instanceof Error ? error.message : 'An error occurred';
-
-        if (!mountedRef.current) {
-          console.log('🎣 useDataFetching: Skipping error state update - component unmounted');
-          return;
-        }
-
-        // If retryOnError is enabled and we haven't exceeded retry attempts
-        if (optionsRef.current.retryOnError && retryCount < 2) {
-          console.log(`🔄 Retrying fetch (attempt ${retryCount + 1})...`);
-          setTimeout(
-            () => {
-              fetch(isRefreshing, retryCount + 1);
-            },
-            Math.min(1000 * Math.pow(2, retryCount), 5000)
-          ); // Exponential backoff with max 5s
-          return;
-        }
 
         setState((prev) => ({
           ...prev,
-          error: errorMessage,
+          data: transformedData,
           loading: false,
           refreshing: false,
-          // Keep previous data on error
-          data: prev.data,
+          error: null,
         }));
 
-        optionsRef.current.onError?.(error);
+        if (optionsRef.current.onSuccess) {
+          optionsRef.current.onSuccess(transformedData);
+        }
+      } catch (error) {
+        console.error('❌ Data fetching error:', error);
+
+        if (!mountedRef.current) {
+          console.log('🎣 useDataFetching: Skipping error state update - component not mounted');
+          return;
+        }
+
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          refreshing: false,
+          error: errorMessage,
+        }));
+
+        if (optionsRef.current.onError) {
+          optionsRef.current.onError(error);
+        }
+
+        // Retry logic for non-refresh fetches
+        if (!isRefreshing && optionsRef.current.retryOnError && retryCount < 2) {
+          console.log(`🔄 Retrying fetch (attempt ${retryCount + 1})...`);
+          setTimeout(() => fetch(false, retryCount + 1), 1000 * (retryCount + 1));
+        }
       }
     },
     [fetchFunction]
-  ); // Only depend on fetchFunction
+  );
 
   const refresh = useCallback(() => {
-    console.log('🔄 Starting data refresh...', {
-      currentState: {
-        loading: stateRef.current.loading,
-        error: stateRef.current.error,
-        dataExists: !!stateRef.current.data,
-      },
-    });
-    setState((prev) => ({ ...prev, refreshing: true }));
-    fetch(true);
+    console.log('🔄 Manual refresh triggered');
+    return fetch(true, 0);
   }, [fetch]);
-
-  console.log('🎣 useDataFetching: Returning state:', {
-    loading: state.loading,
-    error: state.error,
-    refreshing: state.refreshing,
-    hasData: !!state.data,
-  });
 
   return {
     ...state,
-    fetch,
     refresh,
+    fetch,
   };
 }

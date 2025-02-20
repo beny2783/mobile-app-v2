@@ -177,6 +177,22 @@ export function useTransactions(): UseTransactionsResult {
     };
   }, [fetchCategories]);
 
+  // Add state change tracking
+  useEffect(() => {
+    console.log('📊 useTransactions: Transactions state updated:', {
+      count: transactions.length,
+      dateRange: {
+        from: dateRange.from.toISOString(),
+        to: dateRange.to.toISOString(),
+      },
+      hasFilters: {
+        search: searchQuery !== '',
+        category: selectedCategory !== null,
+        bank: selectedBank !== null,
+      },
+    });
+  }, [transactions, dateRange, searchQuery, selectedCategory, selectedBank]);
+
   // Filter transactions based on search, category, and bank
   const filteredTransactions = useMemo(() => {
     console.log('🔍 useTransactions: Filtering transactions:', {
@@ -198,12 +214,18 @@ export function useTransactions(): UseTransactionsResult {
       return matchesSearch && matchesCategory && matchesBank;
     });
 
-    console.log('✨ useTransactions: Filtered transactions:', {
+    console.log('✨ useTransactions: Filtered transactions result:', {
       before: transactions.length,
       after: filtered.length,
       searchFiltered: searchQuery !== '',
       categoryFiltered: selectedCategory !== null,
       bankFiltered: selectedBank !== null,
+      firstFewTransactions: filtered.slice(0, 3).map((t) => ({
+        id: t.id,
+        description: t.description,
+        amount: t.amount,
+        timestamp: t.timestamp,
+      })),
     });
 
     return filtered;

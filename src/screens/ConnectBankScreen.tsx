@@ -106,11 +106,16 @@ export default function ConnectBankScreen() {
             // Ensure connections are refreshed before proceeding
             console.log('🔄 Refreshing bank connections...');
             await refreshConnections();
-            console.log('✅ Bank connections refreshed');
+            console.log('✅ Bank connections refreshed, current state:', {
+              connectionCount: connections.length,
+              connectionIds: connections.map((c) => c.id),
+              connectionStatuses: connections.map((c) => c.status),
+            });
 
             setStatus('connected');
 
             // Navigate to Transactions screen with refresh parameter
+            console.log('🔄 Navigating to Transactions screen with refresh param');
             navigation.navigate('Transactions', { refresh: true });
           } catch (exchangeError) {
             console.error('❌ Code exchange failed:', exchangeError);
