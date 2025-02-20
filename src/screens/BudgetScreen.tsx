@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ export default function BudgetScreen() {
     createCategoryTarget,
     updateCategoryTarget,
     deleteCategoryTarget,
+    refreshCategoryTargets,
   } = useTargets();
 
   const [isSettingModalVisible, setIsSettingModalVisible] = useState(false);
@@ -33,54 +34,58 @@ export default function BudgetScreen() {
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
 
   // Add logging for initial data load and updates
-  React.useEffect(() => {
+  useEffect(() => {
     console.log('[TargetScreen] Loaded category targets:', categoryTargets);
     console.log('[TargetScreen] Loading state:', isLoading);
     if (error) console.error('[TargetScreen] Error:', error);
   }, [categoryTargets, isLoading, error]);
 
+  // Add logging for state updates
+  useEffect(() => {
+    console.log('[BudgetScreen] Category targets updated:', categoryTargets);
+  }, [categoryTargets]);
+
+  useEffect(() => {
+    console.log('[BudgetScreen] Refreshing category targets');
+    refreshCategoryTargets();
+  }, []);
+
   const handleCreateTarget = async (
     target: Omit<CategoryTarget, 'id' | 'user_id' | 'created_at' | 'updated_at'>
   ) => {
+    console.log('[TargetScreen] Creating new target:', target);
     try {
-      console.log('[TargetScreen] Creating new target:', target);
       await createCategoryTarget(target);
-      console.log('[TargetScreen] Target created successfully');
       setIsSettingModalVisible(false);
-    } catch (err) {
-      console.error('[TargetScreen] Failed to create target:', err);
-      // TODO: Show error toast
+      refreshCategoryTargets();
+    } catch (error) {
+      console.error('[TargetScreen] Error creating target:', error);
     }
   };
 
   const handleUpdateTarget = async (category: string, updates: Partial<CategoryTarget>) => {
+    console.log('[TargetScreen] Updating target for category:', category, 'with updates:', updates);
     try {
-      console.log(
-        '[TargetScreen] Updating target for category:',
-        category,
-        'with updates:',
-        updates
-      );
       await updateCategoryTarget(category, updates);
       console.log('[TargetScreen] Target updated successfully');
       setIsDetailModalVisible(false);
       setSelectedCategory(null);
-    } catch (err) {
-      console.error('[TargetScreen] Failed to update target:', err);
-      // TODO: Show error toast
+      refreshCategoryTargets();
+    } catch (error) {
+      console.error('[TargetScreen] Error updating target:', error);
     }
   };
 
   const handleDeleteTarget = async (category: string) => {
+    console.log('[TargetScreen] Deleting target for category:', category);
     try {
-      console.log('[TargetScreen] Deleting target for category:', category);
       await deleteCategoryTarget(category);
       console.log('[TargetScreen] Target deleted successfully');
       setIsDetailModalVisible(false);
       setSelectedCategory(null);
-    } catch (err) {
-      console.error('[TargetScreen] Failed to delete target:', err);
-      // TODO: Show error toast
+      refreshCategoryTargets();
+    } catch (error) {
+      console.error('[TargetScreen] Error deleting target:', error);
     }
   };
 

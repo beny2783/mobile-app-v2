@@ -49,23 +49,33 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
 
   // Get spending data for the chart based on period
   const getChartData = () => {
-    const periodStart = new Date(category.period_start);
+    // Get the current date and start of the current month
     const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    currentMonthStart.setHours(0, 0, 0, 0);
+
     const labels: string[] = [];
     const data: number[] = [];
 
     switch (category.period) {
       case 'daily':
         // Show hourly data for the current day
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         for (let i = 0; i < 24; i++) {
-          const hour = periodStart.getHours() + i;
-          labels.push(`${hour % 24}:00`);
+          const hourStart = new Date(today);
+          hourStart.setHours(i, 0, 0, 0);
+          const hourEnd = new Date(today);
+          hourEnd.setHours(i, 59, 59, 999);
+
+          labels.push(`${i.toString().padStart(2, '0')}:00`);
           const hourlySpending = transactions
             .filter(
               (t) =>
                 t.transaction_category === category.category &&
-                new Date(t.timestamp).getHours() === hour &&
-                new Date(t.timestamp).toDateString() === periodStart.toDateString()
+                new Date(t.timestamp) >= hourStart &&
+                new Date(t.timestamp) <= hourEnd
             )
             .reduce((sum, t) => sum + Math.abs(t.amount), 0);
           data.push(hourlySpending);
@@ -73,16 +83,24 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
         break;
 
       case 'weekly':
-        // Show daily data for the week
+        // Show daily data for the current week
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1)); // Start from Monday
+        weekStart.setHours(0, 0, 0, 0);
+
         for (let i = 0; i < 7; i++) {
-          const date = new Date(periodStart);
-          date.setDate(date.getDate() + i);
-          labels.push(date.toLocaleDateString('en-GB', { weekday: 'short' }));
+          const dayStart = new Date(weekStart);
+          dayStart.setDate(weekStart.getDate() + i);
+          const dayEnd = new Date(dayStart);
+          dayEnd.setHours(23, 59, 59, 999);
+
+          labels.push(dayStart.toLocaleDateString('en-GB', { weekday: 'short' }));
           const dailySpending = transactions
             .filter(
               (t) =>
                 t.transaction_category === category.category &&
-                new Date(t.timestamp).toDateString() === date.toDateString()
+                new Date(t.timestamp) >= dayStart &&
+                new Date(t.timestamp) <= dayEnd
             )
             .reduce((sum, t) => sum + Math.abs(t.amount), 0);
           data.push(dailySpending);
@@ -90,40 +108,69 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
         break;
 
       case 'monthly':
-        // Show weekly data for the month
-        const weeksInMonth = Math.ceil(
-          (now.getTime() - periodStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
-        );
-        for (let i = 0; i < Math.min(weeksInMonth, 4); i++) {
-          const weekStart = new Date(periodStart);
-          weekStart.setDate(weekStart.getDate() + i * 7);
+        // Calculate the start of each week in the current month
+        for (let i = 0; i < 4; i++) {
+          const weekStart = new Date(currentMonthStart);
+          weekStart.setDate(currentMonthStart.getDate() + i * 7);
+          weekStart.setHours(0, 0, 0, 0);
+
           const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekEnd.getDate() + 6);
+          weekEnd.setDate(weekStart.getDate() + 6);
+          weekEnd.setHours(23, 59, 59, 999);
+
+          // Only include transactions up to current date for future weeks
+          const effectiveEndDate = weekEnd > now ? now : weekEnd;
+
           labels.push(`Week ${i + 1}`);
+
           const weeklySpending = transactions
             .filter(
               (t) =>
                 t.transaction_category === category.category &&
                 new Date(t.timestamp) >= weekStart &&
-                new Date(t.timestamp) <= weekEnd
+                new Date(t.timestamp) <= effectiveEndDate
             )
             .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
           data.push(weeklySpending);
+
+          // Add debug logging
+          console.log(`Week ${i + 1} spending:`, {
+            weekStart: weekStart.toISOString(),
+            weekEnd: effectiveEndDate.toISOString(),
+            spending: weeklySpending,
+            transactionCount: transactions.filter(
+              (t) =>
+                t.transaction_category === category.category &&
+                new Date(t.timestamp) >= weekStart &&
+                new Date(t.timestamp) <= effectiveEndDate
+            ).length,
+            transactions: transactions.filter(
+              (t) =>
+                t.transaction_category === category.category &&
+                new Date(t.timestamp) >= weekStart &&
+                new Date(t.timestamp) <= effectiveEndDate
+            ),
+          });
         }
         break;
 
       case 'yearly':
-        // Show monthly data for the year
+        // Show monthly data for the current year
+        const yearStart = new Date(now.getFullYear(), 0, 1);
+
         for (let i = 0; i < 12; i++) {
-          const date = new Date(periodStart);
-          date.setMonth(date.getMonth() + i);
-          labels.push(date.toLocaleDateString('en-GB', { month: 'short' }));
+          const monthStart = new Date(yearStart.getFullYear(), i, 1);
+          const monthEnd = new Date(yearStart.getFullYear(), i + 1, 0, 23, 59, 59, 999);
+          const effectiveEndDate = monthEnd > now ? now : monthEnd;
+
+          labels.push(monthStart.toLocaleDateString('en-GB', { month: 'short' }));
           const monthlySpending = transactions
             .filter(
               (t) =>
                 t.transaction_category === category.category &&
-                new Date(t.timestamp).getMonth() === date.getMonth() &&
-                new Date(t.timestamp).getFullYear() === date.getFullYear()
+                new Date(t.timestamp) >= monthStart &&
+                new Date(t.timestamp) <= effectiveEndDate
             )
             .reduce((sum, t) => sum + Math.abs(t.amount), 0);
           data.push(monthlySpending);
@@ -131,9 +178,24 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
         break;
     }
 
+    // Add debug logging for final chart data
+    console.log('Chart data:', {
+      labels,
+      data,
+      transactionCount: transactions.length,
+      categoryTransactions: transactions.filter((t) => t.transaction_category === category.category)
+        .length,
+    });
+
     return {
       labels,
-      datasets: [{ data }],
+      datasets: [
+        {
+          data,
+          color: (opacity = 1) => `rgba(46, 196, 182, ${opacity})`,
+          strokeWidth: 2,
+        },
+      ],
     };
   };
 
