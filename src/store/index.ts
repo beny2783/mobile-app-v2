@@ -1,10 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
-import accountsReducer from './slices/accountsSlice';
 import authReducer from './slices/auth/slice';
-import budgetReducer from './slices/budget/slice';
 import uiReducer from './slices/ui.slice';
+import accountsReducer from './slices/accountsSlice';
+import budgetReducer from './slices/budget/slice';
 import trueLayerReducer from './slices/trueLayerSlice';
+import transactionsReducer from './slices/transactions/transactionsSlice';
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     accounts: accountsReducer,
     budget: budgetReducer,
     trueLayer: trueLayerReducer,
+    transactions: transactionsReducer,
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware(),
 });
