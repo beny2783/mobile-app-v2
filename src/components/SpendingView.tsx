@@ -13,13 +13,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { SpendingAnalysis } from '../utils/categoryUtils';
 import { colors } from '../constants/theme';
 import { localAIService } from '../services/LocalAIService';
 import { Transaction } from '../types/transaction';
 import { QuestionCards } from './QuestionCards';
-import { AIInsight } from '../types/insights';
+import type { AIInsight } from '../types/transaction/insights';
 import { InsightCard } from './InsightCard';
 
 const { width } = Dimensions.get('window');
@@ -197,8 +197,8 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
     return `${Math.abs(percentage).toFixed(1)}%`;
   };
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('en-GB', {
+  const formatDate = (timestamp: string) => {
+    return new Date(timestamp).toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
     });
@@ -209,54 +209,109 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
       {
         id: '1',
         amount: -25.5,
-        date: '2024-03-15',
+        timestamp: '2024-03-15',
         description: 'Local Store',
         user_id: 'test',
         connection_id: 'test',
-        account_id: 'test',
         currency: 'GBP',
-        type: 'debit',
+        transaction_type: 'debit',
         created_at: '2024-03-15',
         updated_at: '2024-03-15',
       },
       {
         id: '2',
         amount: -32.8,
-        date: '2024-03-14',
+        timestamp: '2024-03-14',
         description: 'Online Shop',
         user_id: 'test',
         connection_id: 'test',
-        account_id: 'test',
         currency: 'GBP',
-        type: 'debit',
+        transaction_type: 'debit',
         created_at: '2024-03-14',
         updated_at: '2024-03-14',
       },
       {
         id: '3',
         amount: -18.99,
-        date: '2024-03-12',
+        timestamp: '2024-03-12',
         description: 'Service Provider',
         user_id: 'test',
         connection_id: 'test',
-        account_id: 'test',
         currency: 'GBP',
-        type: 'debit',
+        transaction_type: 'debit',
         created_at: '2024-03-12',
         updated_at: '2024-03-12',
       },
     ];
   };
 
-  const renderTransaction = ({ item }: { item: Transaction }) => (
-    <View style={styles.transactionItem}>
-      <View style={styles.transactionLeft}>
-        <Text style={styles.transactionMerchant}>{item.description}</Text>
-        <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
+  const getMerchantIcon = (
+    description: string,
+    category?: string
+  ): { name: string; type: 'ionicons' | 'material' } => {
+    const lowercaseDesc = description.toLowerCase();
+    const lowercaseCategory = (category || '').toLowerCase();
+
+    // Check for common merchants and categories
+    if (lowercaseDesc.includes('amazon') || lowercaseDesc.includes('amzn')) {
+      return { name: 'amazon', type: 'material' };
+    } else if (lowercaseDesc.includes('uber') || lowercaseDesc.includes('lyft')) {
+      return { name: 'car', type: 'ionicons' };
+    } else if (lowercaseDesc.includes('netflix')) {
+      return { name: 'play-circle', type: 'ionicons' };
+    } else if (lowercaseDesc.includes('spotify')) {
+      return { name: 'musical-notes', type: 'ionicons' };
+    } else if (lowercaseDesc.includes('apple')) {
+      return { name: 'apple', type: 'ionicons' };
+    } else if (lowercaseDesc.includes('google')) {
+      return { name: 'google', type: 'material' };
+    }
+
+    // Category-based fallbacks
+    if (lowercaseCategory.includes('groceries') || lowercaseCategory.includes('food')) {
+      return { name: 'cart', type: 'ionicons' };
+    } else if (lowercaseCategory.includes('transport')) {
+      return { name: 'bus', type: 'ionicons' };
+    } else if (lowercaseCategory.includes('entertainment')) {
+      return { name: 'game-controller', type: 'ionicons' };
+    } else if (lowercaseCategory.includes('shopping')) {
+      return { name: 'bag', type: 'ionicons' };
+    } else if (lowercaseCategory.includes('bills') || lowercaseCategory.includes('utilities')) {
+      return { name: 'receipt', type: 'ionicons' };
+    }
+
+    // Default icon
+    return { name: 'card', type: 'ionicons' };
+  };
+
+  const renderTransaction = ({ item }: { item: Transaction }) => {
+    const merchantIcon = getMerchantIcon(item.description);
+
+    return (
+      <View style={styles.transactionItem}>
+        <View style={styles.transactionLeft}>
+          <View style={styles.merchantContainer}>
+            <View style={styles.iconContainer}>
+              {merchantIcon.type === 'ionicons' ? (
+                <Ionicons name={merchantIcon.name as any} size={20} color={colors.primary} />
+              ) : (
+                <MaterialCommunityIcons
+                  name={merchantIcon.name as any}
+                  size={20}
+                  color={colors.primary}
+                />
+              )}
+            </View>
+            <View style={styles.merchantInfo}>
+              <Text style={styles.transactionMerchant}>{item.description}</Text>
+              <Text style={styles.transactionDate}>{formatDate(item.timestamp)}</Text>
+            </View>
+          </View>
+        </View>
+        <Text style={styles.transactionAmount}>{formatAmount(item.amount)}</Text>
       </View>
-      <Text style={styles.transactionAmount}>{formatAmount(item.amount)}</Text>
-    </View>
-  );
+    );
+  };
 
   const renderInsightIcon = (type: string) => {
     switch (type) {
@@ -797,5 +852,21 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '500',
+  },
+  merchantContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary + '10',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  merchantInfo: {
+    flex: 1,
   },
 });

@@ -1,29 +1,26 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
-import uiReducer from './slices/ui.slice';
+import accountsReducer from './slices/accountsSlice';
 import authReducer from './slices/auth/slice';
 import budgetReducer from './slices/budget/slice';
+import uiReducer from './slices/ui.slice';
+import trueLayerReducer from './slices/trueLayerSlice';
 
-// We'll add reducers as we create them
-const store = configureStore({
+export const store = configureStore({
   reducer: {
-    ui: uiReducer,
+    // Core state slices
     auth: authReducer,
+    ui: uiReducer,
+
+    // Feature slices
+    accounts: accountsReducer,
     budget: budgetReducer,
-    // Other reducers will be added here as we create them
+    trueLayer: trueLayerReducer,
   },
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({
-      serializableCheck: {
-        // Ignore these action types
-        ignoredActions: ['persist/PERSIST'],
-      },
-    }),
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware(),
 });
 
 setupListeners(store.dispatch);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
-
-export default store;

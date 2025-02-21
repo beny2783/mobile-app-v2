@@ -1,257 +1,84 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/theme';
-import { useServices } from '../contexts/ServiceContext';
-import { useBankConnections } from '../hooks/useBankConnections';
-import * as WebBrowser from 'expo-web-browser';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Text, ScrollView, RefreshControl } from 'react-native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RouteProp } from '@react-navigation/native';
-import type { AppTabParamList } from '../types/navigation';
+import type { RootStackParamList } from '../navigation/types';
 import { NotificationTest } from '../components/NotificationTest';
 import HomeHeader from '../components/HomeHeader';
 import SummaryCards from '../components/SummaryCards';
 import BankCard from '../components/BankCard';
-import { createBalanceRepository, GroupedBalances } from '../repositories/balance';
 import LoadingOverlay from '../components/LoadingOverlay';
+import { useAccounts } from '../hooks/useAccounts';
+import { useAppSelector } from '../store/hooks';
+import { selectTotalBalance } from '../store/slices/accountsSlice';
+import { colors } from '../constants/theme';
 
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-
-type HomeScreenNavigationProp = NativeStackNavigationProp<AppTabParamList, 'Home'>;
-type HomeScreenRouteProp = RouteProp<AppTabParamList, 'Home'>;
-
-// Initialize repository once, outside component
-const balanceRepository = createBalanceRepository();
+type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen() {
   console.log('🏦 Rendering HomeScreen');
-
   const navigation = useNavigation<HomeScreenNavigationProp>();
-  const route = useRoute<HomeScreenRouteProp>();
-  const { trueLayerService } = useServices();
-  const [status, setStatus] = useState<ConnectionStatus>('disconnected');
-  const [error, setError] = useState<string | null>(null);
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
-  const [groupedBalances, setGroupedBalances] = useState<GroupedBalances[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState<string>('');
 
   const {
     connections,
-    loading: connectionLoading,
-    error: connectionError,
-    refresh: refreshConnections,
-    disconnectBank,
-  } = useBankConnections();
+    connectionsLoading,
+    connectionsError,
+    loadConnections,
+    loadAccountsByConnection,
+  } = useAccounts();
 
-  // Log when connections change
-  useEffect(() => {
-    console.log('🔄 Bank connections updated:', {
-      count: connections.length,
-      status,
-      error: connectionError,
-      loading: connectionLoading,
-    });
-  }, [connections, status, connectionError, connectionLoading]);
+  const totalBalance = useAppSelector(selectTotalBalance);
 
+  // Load connections and their accounts on mount
   useEffect(() => {
-    console.log('📝 Route params changed:', route.params);
-    const init = async () => {
+    const loadAllData = async () => {
       try {
-        if (route.params?.success) {
-          console.log('✅ Bank connection successful');
-          setStatus('connected');
-          return;
-        }
-
-        if (route.params?.error) {
-          console.log('❌ Bank connection error:', route.params.error);
-          setError(route.params.error);
-          setStatus('error');
-          return;
-        }
+        await loadConnections();
+        // Load accounts for each connection
+        await Promise.all(connections.map((conn) => loadAccountsByConnection(conn.id)));
       } catch (error) {
-        console.error('❌ Failed to initialize:', error);
-        setError('Failed to check bank connection');
-        setStatus('error');
+        console.error('Failed to load all data:', error);
       }
     };
-
-    init();
-  }, [route.params]);
-
-  const handleBankConnection = async () => {
-    console.log('🔄 Starting bank connection process...');
-    setError(null);
-    setStatus('connecting');
-    setLoadingMessage('Connecting to your bank...');
-
-    try {
-      const authUrl = trueLayerService.getAuthUrl();
-      console.log('🔗 Generated auth URL');
-
-      const result = await WebBrowser.openAuthSessionAsync(
-        authUrl,
-        'spendingtracker://auth/callback'
-      );
-      console.log('📱 Browser session result:', result.type);
-
-      if (result.type === 'success') {
-        const url = result.url;
-        const code = new URL(url).searchParams.get('code');
-
-        if (code) {
-          console.log('🔑 Received auth code, exchanging...');
-          setLoadingMessage('Authorizing access...');
-
-          try {
-            await trueLayerService.exchangeCode(code);
-            console.log('✅ Code exchange successful');
-
-            // Ensure all data is refreshed in the correct order
-            console.log('🔄 Refreshing bank connections and balances...');
-            setLoadingMessage('Fetching your accounts...');
-            await refreshConnections();
-
-            setLoadingMessage('Updating balances...');
-            await fetchBalances();
-
-            setStatus('connected');
-            setLoadingMessage('');
-            console.log('✅ Home screen data updated');
-
-            // Only navigate after all data is updated
-            navigation.navigate('Transactions', { refresh: true });
-          } catch (exchangeError) {
-            console.error('❌ Code exchange failed:', exchangeError);
-            setError('Failed to complete bank connection');
-            setStatus('error');
-            setLoadingMessage('');
-          }
-        }
-      } else {
-        console.log('❌ Bank connection cancelled or failed');
-        setError('Bank connection cancelled or failed');
-        setStatus('error');
-        setLoadingMessage('');
-      }
-
-      await WebBrowser.coolDownAsync();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Error connecting bank:', error);
-      setError(`Failed to connect to bank: ${errorMessage}`);
-      setStatus('error');
-      setLoadingMessage('');
-    }
-  };
-
-  const handleDisconnectBank = async (connectionId: string) => {
-    console.log('🔄 Disconnecting bank:', connectionId);
-    try {
-      setError(null);
-      await disconnectBank(connectionId);
-      console.log('✅ Bank disconnected successfully');
-      // Refresh balances after successful disconnect
-      await fetchBalances();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Error disconnecting bank:', error);
-      setError(`Failed to disconnect bank: ${errorMessage}`);
-    }
-  };
+    loadAllData();
+  }, [loadConnections, loadAccountsByConnection]);
 
   const handleSearchPress = () => {
-    setIsSearchVisible(true);
     // TODO: Implement search functionality
   };
 
   const handleAddPress = () => {
-    handleBankConnection();
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: 'ConnectBank',
+      })
+    );
   };
 
   const handleProfilePress = () => {
-    navigation.navigate('Profile');
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: 'Profile',
+      })
+    );
   };
 
-  const fetchBalances = async () => {
+  const handleRefresh = async () => {
     try {
-      console.log('🏦 HomeScreen: Fetching grouped balances...');
-      const balances = await balanceRepository.getGroupedBalances();
-      console.log(`✅ HomeScreen: Found ${balances.length} bank connections`);
-
-      setGroupedBalances(balances);
-      setError(null);
-    } catch (err) {
-      console.error('❌ HomeScreen: Error fetching balances:', err);
-      setError('Failed to load balances');
-      setGroupedBalances([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      await loadConnections();
+      await Promise.all(connections.map((conn) => loadAccountsByConnection(conn.id)));
+    } catch (error) {
+      console.error('Failed to refresh data:', error);
     }
   };
 
-  useEffect(() => {
-    fetchBalances();
-  }, []);
-
-  const onRefresh = () => {
-    console.log('🔄 HomeScreen: Refreshing data...');
-    setRefreshing(true);
-    fetchBalances();
-  };
-
-  // Calculate total balances and monthly spend
-  const personalAccounts = groupedBalances.filter(
-    (group) => !group.connection.bank_name?.toLowerCase().includes('joint')
-  );
-  const jointAccounts = groupedBalances.filter((group) =>
-    group.connection.bank_name?.toLowerCase().includes('joint')
-  );
-
-  const calculateTotalBalance = (groups: GroupedBalances[]) =>
-    groups.reduce(
-      (total, group) => total + group.accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0),
-      0
-    );
-
-  const personalBalance = calculateTotalBalance(personalAccounts);
-  const jointBalance = calculateTotalBalance(jointAccounts);
-
-  // TODO: Calculate actual monthly spend from transactions
-  const monthlySpend = 1288.4;
-
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <LoadingOverlay visible={!!loadingMessage} message={loadingMessage} />
-        <HomeHeader
-          onSearchPress={handleSearchPress}
-          onAddPress={handleAddPress}
-          onProfilePress={handleProfilePress}
-        />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </View>
-    );
-  }
+  // TODO: Implement joint balance and monthly spend calculations
+  const jointBalance = 0;
+  const monthlySpend = 0;
 
   return (
     <View style={styles.container}>
-      <LoadingOverlay visible={!!loadingMessage} message={loadingMessage} />
+      <LoadingOverlay visible={connectionsLoading} message="Loading your accounts..." />
       <HomeHeader
         onSearchPress={handleSearchPress}
         onAddPress={handleAddPress}
@@ -259,29 +86,34 @@ export default function HomeScreen() {
       />
       <ScrollView
         style={styles.scrollView}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl refreshing={connectionsLoading} onRefresh={handleRefresh} />
+        }
       >
         <SummaryCards
-          personalBalance={personalBalance}
+          personalBalance={totalBalance}
           jointBalance={jointBalance}
           monthlySpend={monthlySpend}
         />
 
-        {groupedBalances.map((group) => (
+        {connections.map((connection) => (
           <BankCard
-            key={group.connection.id}
-            bankName={group.connection.bank_name || 'Connected Bank'}
-            accounts={group.accounts}
-            onRefresh={onRefresh}
-            onDisconnect={() => handleDisconnectBank(group.connection.id)}
-            connectionId={group.connection.id}
+            key={connection.id}
+            bankName={connection.provider || 'Connected Bank'}
+            connectionId={connection.id}
           />
         ))}
 
-        {groupedBalances.length === 0 && (
+        {connections.length === 0 && !connectionsLoading && (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No accounts found</Text>
             <Text style={styles.emptySubtext}>Connect a bank account to see your balances</Text>
+          </View>
+        )}
+
+        {connectionsError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Error loading accounts: {connectionsError.message}</Text>
           </View>
         )}
 
@@ -301,23 +133,13 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    color: colors.text.secondary,
-  },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    padding: 24,
     alignItems: 'center',
-    padding: 32,
   },
   emptyText: {
     fontSize: 18,
+    fontWeight: '600',
     color: colors.text.primary,
     marginBottom: 8,
   },
@@ -326,9 +148,18 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
   },
+  errorContainer: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: '#FFE5E5',
+    borderRadius: 8,
+  },
+  errorText: {
+    color: '#FF5252',
+    fontSize: 14,
+  },
   notificationTestContainer: {
     marginTop: 24,
-    marginBottom: 32,
-    paddingHorizontal: 16,
+    marginBottom: 24,
   },
 });

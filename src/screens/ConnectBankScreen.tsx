@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,73 +10,30 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
 import { useServices } from '../contexts/ServiceContext';
-import { useBankConnections } from '../hooks/useBankConnections';
 import * as WebBrowser from 'expo-web-browser';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RouteProp } from '@react-navigation/native';
-import type { AppTabParamList } from '../types/navigation';
+import type { RootStackParamList } from '../navigation/types';
 import { NotificationTest } from '../components/NotificationTest';
+import { useAccounts } from '../hooks/useAccounts';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-
-type ConnectBankScreenNavigationProp = NativeStackNavigationProp<AppTabParamList, 'ConnectBank'>;
-type ConnectBankScreenRouteProp = RouteProp<AppTabParamList, 'ConnectBank'>;
+type ConnectBankScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ConnectBankScreen() {
   console.log('🏦 Rendering ConnectBankScreen');
-
   const navigation = useNavigation<ConnectBankScreenNavigationProp>();
-  const route = useRoute<ConnectBankScreenRouteProp>();
   const { trueLayerService } = useServices();
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
 
   const {
     connections,
-    loading,
-    error: connectionError,
-    refresh: refreshConnections,
-    disconnectBank,
-  } = useBankConnections();
-
-  // Log when connections change
-  useEffect(() => {
-    console.log('🔄 Bank connections updated:', {
-      count: connections.length,
-      status,
-      error: connectionError,
-      loading,
-    });
-  }, [connections, status, connectionError, loading]);
-
-  useEffect(() => {
-    console.log('📝 Route params changed:', route.params);
-    const init = async () => {
-      try {
-        // Check for success/error from callback first
-        if (route.params?.success) {
-          console.log('✅ Bank connection successful');
-          setStatus('connected');
-          await refreshConnections();
-          return;
-        }
-
-        if (route.params?.error) {
-          console.log('❌ Bank connection error:', route.params.error);
-          setError(route.params.error);
-          setStatus('error');
-          return;
-        }
-      } catch (error) {
-        console.error('❌ Failed to initialize:', error);
-        setError('Failed to check bank connection');
-        setStatus('error');
-      }
-    };
-
-    init();
-  }, [route.params, refreshConnections]);
+    connectionsLoading,
+    connectionsError,
+    loadConnections,
+    disconnectBankConnection,
+  } = useAccounts();
 
   const handleBankConnection = async () => {
     console.log('🔄 Starting bank connection process...');
@@ -99,24 +56,24 @@ export default function ConnectBankScreen() {
 
         if (code) {
           console.log('🔑 Received auth code, exchanging...');
+
           try {
             await trueLayerService.exchangeCode(code);
             console.log('✅ Code exchange successful');
 
-            // Ensure connections are refreshed before proceeding
-            console.log('🔄 Refreshing bank connections...');
-            await refreshConnections();
-            console.log('✅ Bank connections refreshed, current state:', {
-              connectionCount: connections.length,
-              connectionIds: connections.map((c) => c.id),
-              connectionStatuses: connections.map((c) => c.status),
-            });
-
+            // Refresh connections to get the new bank
+            await loadConnections();
             setStatus('connected');
 
-            // Navigate to Transactions screen with refresh parameter
-            console.log('🔄 Navigating to Transactions screen with refresh param');
-            navigation.navigate('Transactions', { refresh: true });
+            // Navigate back to home screen
+            navigation.dispatch(
+              CommonActions.navigate({
+                name: 'AppTabs',
+                params: {
+                  screen: 'Home',
+                },
+              })
+            );
           } catch (exchangeError) {
             console.error('❌ Code exchange failed:', exchangeError);
             setError('Failed to complete bank connection');
@@ -138,20 +95,7 @@ export default function ConnectBankScreen() {
     }
   };
 
-  const handleDisconnectBank = async (connectionId: string) => {
-    console.log('🔄 Disconnecting bank:', connectionId);
-    try {
-      setError(null);
-      await disconnectBank(connectionId);
-      console.log('✅ Bank disconnected successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Error disconnecting bank:', error);
-      setError(`Failed to disconnect bank: ${errorMessage}`);
-    }
-  };
-
-  if (loading) {
+  if (connectionsLoading) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#87CEEB" />
@@ -192,8 +136,7 @@ export default function ConnectBankScreen() {
                       ]}
                     />
                     <Text style={styles.bankName}>
-                      {connection.bank_name ||
-                        `${connection.provider.charAt(0).toUpperCase()}${connection.provider.slice(1)} Bank ${connections.length > 1 ? connection.id.slice(-4) : ''}`}
+                      {connection.provider.charAt(0).toUpperCase() + connection.provider.slice(1)}
                     </Text>
                   </View>
                   <Text style={styles.connectionStatus}>
@@ -204,20 +147,13 @@ export default function ConnectBankScreen() {
                 </View>
                 <TouchableOpacity
                   style={styles.disconnectButton}
-                  onPress={() => handleDisconnectBank(connection.id)}
+                  onPress={() => disconnectBankConnection(connection.id)}
                 >
                   <Text style={styles.disconnectButtonText}>Disconnect</Text>
                 </TouchableOpacity>
               </View>
 
               <View style={styles.connectionDetails}>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Accounts Connected:</Text>
-                  <Text style={styles.detailValue}>
-                    {connection.account_count}{' '}
-                    {connection.account_count === 1 ? 'account' : 'accounts'}
-                  </Text>
-                </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Last Updated:</Text>
                   <Text style={styles.detailValue}>
@@ -247,9 +183,9 @@ export default function ConnectBankScreen() {
         </TouchableOpacity>
       </View>
 
-      {error && (
+      {(error || connectionsError) && (
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{error || connectionsError?.message}</Text>
         </View>
       )}
     </ScrollView>

@@ -16,14 +16,14 @@ import { colors } from '../constants/theme';
 import { DatabaseTransaction } from '../types/transaction';
 import { useTransactions } from '../hooks/useTransactions';
 import type { UseTransactionsResult } from '../hooks/useTransactions';
-import { useBankConnections } from '../hooks/useBankConnections';
-import { Ionicons } from '@expo/vector-icons';
+import { useAccounts } from '../hooks/useAccounts';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import type { AppTabParamList } from '../types/navigation/index';
 import CategorySelectionModal from '../components/modals/CategorySelectionModal';
 import { createTransactionRepository } from '../repositories/transaction';
-import { useServices } from '../contexts/ServiceContext';
-import { ITrueLayerApiService } from '../services/trueLayer/types';
+import { getTrueLayerApiService } from '../store/slices/trueLayerSlice';
+import type { ITrueLayerApiService } from '../services/trueLayer/types';
 import { createTargetRepository } from '../repositories/target';
 
 interface TransactionSection {
@@ -41,10 +41,49 @@ const getBankColor = (bankId: string) => {
   return colors[index % colors.length];
 };
 
+const getMerchantIcon = (
+  description: string,
+  category?: string
+): { name: string; type: 'ionicons' | 'material' } => {
+  const lowercaseDesc = description.toLowerCase();
+  const lowercaseCategory = (category || '').toLowerCase();
+
+  // Check for common merchants and categories
+  if (lowercaseDesc.includes('amazon') || lowercaseDesc.includes('amzn')) {
+    return { name: 'amazon', type: 'material' };
+  } else if (lowercaseDesc.includes('uber') || lowercaseDesc.includes('lyft')) {
+    return { name: 'car', type: 'ionicons' };
+  } else if (lowercaseDesc.includes('netflix')) {
+    return { name: 'play-circle', type: 'ionicons' };
+  } else if (lowercaseDesc.includes('spotify')) {
+    return { name: 'musical-notes', type: 'ionicons' };
+  } else if (lowercaseDesc.includes('apple')) {
+    return { name: 'apple', type: 'ionicons' };
+  } else if (lowercaseDesc.includes('google')) {
+    return { name: 'google', type: 'material' };
+  }
+
+  // Category-based fallbacks
+  if (lowercaseCategory.includes('groceries') || lowercaseCategory.includes('food')) {
+    return { name: 'cart', type: 'ionicons' };
+  } else if (lowercaseCategory.includes('transport')) {
+    return { name: 'bus', type: 'ionicons' };
+  } else if (lowercaseCategory.includes('entertainment')) {
+    return { name: 'game-controller', type: 'ionicons' };
+  } else if (lowercaseCategory.includes('shopping')) {
+    return { name: 'bag', type: 'ionicons' };
+  } else if (lowercaseCategory.includes('bills') || lowercaseCategory.includes('utilities')) {
+    return { name: 'receipt', type: 'ionicons' };
+  }
+
+  // Default icon
+  return { name: 'card', type: 'ionicons' };
+};
+
 export default function TransactionsScreen() {
   console.log('🏦 Rendering TransactionsScreen');
   const route = useRoute<RouteProp<AppTabParamList, 'Transactions'>>();
-  const { trueLayerService } = useServices();
+  const trueLayerService = getTrueLayerApiService();
 
   // Add state for category editing
   const [editingTransaction, setEditingTransaction] = useState<DatabaseTransaction | null>(null);
@@ -73,7 +112,7 @@ export default function TransactionsScreen() {
     dateRange,
   } = result;
 
-  const { connections } = useBankConnections();
+  const { connections } = useAccounts();
 
   // Create repository instance
   const repository = createTransactionRepository(
@@ -327,35 +366,51 @@ export default function TransactionsScreen() {
   const renderTransaction = ({ item }: { item: DatabaseTransaction }) => {
     const bank = connections.find((conn) => conn.id === item.connection_id);
     const bankColor = bank ? getBankColor(bank.id) : colors.primary;
+    const merchantIcon = getMerchantIcon(item.description, item.transaction_category);
 
     return (
       <View style={styles.transactionCard}>
         <View style={styles.transactionHeader}>
           <View style={styles.transactionInfo}>
-            <Text style={styles.description} numberOfLines={2}>
-              {item.description || 'Unknown Transaction'}
-            </Text>
-            <View style={styles.transactionMeta}>
-              <TouchableOpacity
-                onPress={() => handleCategoryPress(item)}
-                style={styles.categoryButton}
-              >
-                <Text style={styles.transactionCategory}>{item.transaction_category}</Text>
-                <Ionicons
-                  name="pencil"
-                  size={12}
-                  color={colors.text.secondary}
-                  style={styles.editIcon}
-                />
-              </TouchableOpacity>
-              {connections.length > 1 && (
-                <View style={styles.bankTag}>
-                  <View style={[styles.bankDot, { backgroundColor: bankColor }]} />
-                  <Text style={[styles.bankName, { color: bankColor }]}>
-                    {bank?.provider || 'Unknown Bank'}
-                  </Text>
+            <View style={styles.merchantContainer}>
+              <View style={styles.iconContainer}>
+                {merchantIcon.type === 'ionicons' ? (
+                  <Ionicons name={merchantIcon.name as any} size={24} color={colors.primary} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name={merchantIcon.name as any}
+                    size={24}
+                    color={colors.primary}
+                  />
+                )}
+              </View>
+              <View style={styles.descriptionContainer}>
+                <Text style={styles.description} numberOfLines={2}>
+                  {item.description || 'Unknown Transaction'}
+                </Text>
+                <View style={styles.transactionMeta}>
+                  <TouchableOpacity
+                    onPress={() => handleCategoryPress(item)}
+                    style={styles.categoryButton}
+                  >
+                    <Text style={styles.transactionCategory}>{item.transaction_category}</Text>
+                    <Ionicons
+                      name="pencil"
+                      size={12}
+                      color={colors.text.secondary}
+                      style={styles.editIcon}
+                    />
+                  </TouchableOpacity>
+                  {connections.length > 1 && (
+                    <View style={styles.bankTag}>
+                      <View style={[styles.bankDot, { backgroundColor: bankColor }]} />
+                      <Text style={[styles.bankName, { color: bankColor }]}>
+                        {bank?.provider || 'Unknown Bank'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              )}
+              </View>
             </View>
           </View>
           <Text style={[styles.amount, { color: item.amount < 0 ? colors.error : colors.success }]}>
@@ -631,5 +686,21 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
     margin: 16,
+  },
+  merchantContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary + '10',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  descriptionContainer: {
+    flex: 1,
   },
 });

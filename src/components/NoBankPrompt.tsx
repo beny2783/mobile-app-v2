@@ -5,9 +5,10 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../constants/theme';
 import { AppTabParamList } from '../types/navigation';
-import { useServices } from '../contexts/ServiceContext';
-import { useBankConnections } from '../hooks/useBankConnections';
+import { useAccounts } from '../hooks/useAccounts';
 import * as WebBrowser from 'expo-web-browser';
+import { useAppDispatch } from '../store/hooks';
+import { getAuthUrl } from '../store/slices/trueLayerSlice';
 
 type NavigationProp = NativeStackNavigationProp<AppTabParamList>;
 
@@ -15,8 +16,8 @@ export const NoBankPrompt = () => {
   const [expanded, setExpanded] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const navigation = useNavigation<NavigationProp>();
-  const { trueLayerService } = useServices();
-  const { refresh: refreshConnections } = useBankConnections();
+  const dispatch = useAppDispatch();
+  const { loadConnections: refreshConnections } = useAccounts();
   const route = useRoute();
 
   // Listen for navigation focus events to refresh connections
@@ -36,7 +37,7 @@ export const NoBankPrompt = () => {
     setConnecting(true);
 
     try {
-      const authUrl = trueLayerService.getAuthUrl();
+      const authUrl = await dispatch(getAuthUrl()).unwrap();
       console.log('🔗 Generated auth URL');
 
       const result = await WebBrowser.openAuthSessionAsync(
@@ -48,10 +49,9 @@ export const NoBankPrompt = () => {
       if (result.type === 'success') {
         const url = result.url;
         console.log('🔑 Received callback URL, navigating to Callback screen...');
-        // Navigate to Callback screen with the current screen name for return navigation
+        // Navigate to Callback screen
         navigation.navigate('Callback', {
           url,
-          returnScreen: route.name,
         });
       }
 

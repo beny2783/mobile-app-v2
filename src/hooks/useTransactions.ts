@@ -1,13 +1,13 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useServices } from '../contexts/ServiceContext';
 import { useDataFetching } from './useDataFetching';
 import { supabase } from '../services/supabase';
-import { useBankConnections } from './useBankConnections';
+import { useAccounts } from './useAccounts';
 import type { DatabaseTransaction } from '../types/transaction';
 import type { BankConnectionWithAccounts } from '../types/bank/connection';
 import { authRepository } from '../repositories/auth';
 import { createTransactionRepository } from '../repositories/transaction';
-import { ITrueLayerApiService } from '../services/trueLayer/types';
+import { getTrueLayerApiService } from '../store/slices/trueLayerSlice';
+import type { ITrueLayerApiService } from '../services/trueLayer/types';
 import { BankConnection } from '../types/bank/connection';
 
 interface DateRange {
@@ -47,8 +47,8 @@ export interface UseTransactionsResult {
 export function useTransactions(): UseTransactionsResult {
   console.log('🎣 useTransactions: Hook initialized');
 
-  const { trueLayerService } = useServices();
-  const { connections } = useBankConnections();
+  const trueLayerService = getTrueLayerApiService();
+  const { connections } = useAccounts();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
     to: new Date(),
