@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/theme';
 import { CategoryTarget, TargetPeriod } from '../../types/target';
 import ColorPicker from 'react-native-wheel-color-picker';
-import { useTransactions } from '../../hooks/useTransactions';
+import { useTransactions } from '../../store/slices/transactions/hooks';
 import { useBudget } from '../../store/slices/budget/hooks';
 
 interface BudgetSettingModalProps {
@@ -30,8 +30,9 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
   onClose,
   onSubmit,
 }) => {
-  const { categories, loading: isCategoriesLoading } = useTransactions();
+  const { categories, loading } = useTransactions();
   const { loading: isBudgetLoading } = useBudget();
+  const isCategoriesLoading = loading.categories;
   const [selectedCategory, setSelectedCategory] = useState('');
   const [targetLimit, setTargetLimit] = useState('');
   const [period, setPeriod] = useState<TargetPeriod>('monthly');

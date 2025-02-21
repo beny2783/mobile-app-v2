@@ -398,3 +398,76 @@ Track the following metrics during migration:
 3. Number of prop drilling instances
 4. Component render performance
 5. State update performance
+
+## Hooks Migration Status
+
+### Completed Migrations ✅
+
+- `src/hooks/useTransactions.ts` ✅ -> Migrated to `store/slices/transactions/hooks.ts`
+- `src/hooks/useTargets.ts` ✅ -> Migrated to `store/slices/budget/hooks.ts`
+
+### Pending Hook Migrations 🔄
+
+1. **useAccounts.ts**
+
+   - Current: Local hook managing bank account state
+   - Target: Move to `store/slices/accounts/hooks.ts`
+   - Dependencies: TrueLayer service integration
+   - Components to update:
+     - AccountList
+     - TransactionsScreen
+     - TrendsScreen
+
+2. **useSpendingAnalysis.ts**
+
+   - Current: Complex analysis logic for spending patterns
+   - Target: Move to `store/slices/analytics/hooks.ts`
+   - Dependencies: Transaction data
+   - Components to update:
+     - TrendsScreen
+     - SpendingView
+
+3. **useBalanceAnalysis.ts**
+
+   - Current: Balance tracking and analysis
+   - Target: Move to `store/slices/analytics/hooks.ts`
+   - Dependencies: Account data, Transaction data
+   - Components to update:
+     - TrendsScreen
+     - BalanceView
+
+4. **useTransactionPatterns.ts**
+
+   - Current: Pattern detection for recurring transactions
+   - Target: Move to `store/slices/transactions/hooks.ts`
+   - Dependencies: Transaction data
+   - Components to update:
+     - TransactionsScreen
+     - PatternView
+
+5. **useDataFetching.ts**
+   - Current: Generic data fetching utilities
+   - Target: Split into respective slices or create dedicated API slice
+   - Dependencies: Multiple
+   - Components to update:
+     - Various screens and components
+
+### Migration Steps for Each Hook
+
+1. Create new Redux slice if needed (e.g., analytics slice)
+2. Move business logic to slice
+3. Create new hooks in appropriate location
+4. Update component imports
+5. Test new implementation
+6. Remove old hook file
+7. Update documentation
+
+### Next Steps
+
+1. Create analytics slice for spending and balance analysis
+2. Complete accounts slice implementation
+3. Migrate remaining hooks one by one
+4. Update affected components
+5. Add tests for new implementations
+6. Remove old hook files
+7. Update import paths across the application

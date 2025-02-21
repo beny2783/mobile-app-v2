@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,22 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
-import { useTransactions } from '../hooks/useTransactions';
-import { useSpendingAnalysis } from '../hooks/useSpendingAnalysis';
-import { useBalanceAnalysis } from '../hooks/useBalanceAnalysis';
+import { useTransactions } from '../store/slices/transactions/hooks';
+import { useAccounts } from '../hooks/useAccounts';
+import { useSpendingAnalysis } from '../store/slices/analytics/hooks';
+import { useBalanceAnalysis } from '../store/slices/analytics/hooks';
 import { SpendingView } from '../components/SpendingView';
 import { BalanceView } from '../components/BalanceView';
 import { TargetView } from '../components/TargetView';
 import { getTimeRange } from '../utils/balanceUtils';
 import { createBalanceRepository } from '../repositories/balance';
 import { DatabaseBankAccount } from '../types/bank/database';
-import { TimeRange } from '../types/bank/analysis';
+import type { TimeRange } from '../types/bank/analysis';
+import { LoadingSpinner } from '../components/LoadingSpinner';
+import LoadingOverlay from '../components/LoadingOverlay';
 import type { Transaction } from '../types/transaction';
+import type { DatabaseTransaction } from '../types/transaction/index';
+import type { BaseTransaction } from '../types/transaction/index';
 
 type TabType = 'Balance' | 'Spending' | 'Target';
 
@@ -35,23 +40,52 @@ interface ExtendedBankAccount extends DatabaseBankAccount {
 }
 
 export default function TrendsScreen() {
+  // 1. All hooks must be called before any conditional returns
   const [timeRangeType, setTimeRangeType] = useState<TimeRange['type']>('Month');
   const [activeTab, setActiveTab] = useState<TabType>('Balance');
   const [showAccountSelector, setShowAccountSelector] = useState(false);
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [bankAccounts, setBankAccounts] = useState<ExtendedBankAccount[]>([]);
-  const { transactions, loading, error, refreshing, refresh, bankConnections } = useTransactions();
+  const [isLoadingBankAccounts, setIsLoadingBankAccounts] = useState(true);
   const [spendingTimeRange, setSpendingTimeRange] = useState<'week' | 'month'>('month');
 
+  // Redux hooks
+  const {
+    allTransactions: transactions = [],
+    loading: isLoadingTransactions,
+    errors,
+    fetch: fetchTransactions,
+  } = useTransactions();
+  const {
+    connections,
+    loadConnections: fetchAccounts,
+    connectionsLoading: isLoadingAccounts,
+  } = useAccounts();
+  const refreshing = isLoadingTransactions;
+  const error = errors.transactions;
+
+  const {
+    analysis: spendingAnalysis,
+    updateTimeRange: updateSpendingTimeRange,
+    calculate: calculateSpending,
+  } = useSpendingAnalysis();
+
+  const {
+    analysis: balanceAnalysis,
+    updateTimeRange: updateBalanceTimeRange,
+    calculate: calculateBalance,
+    loading: isLoadingAnalysis,
+  } = useBalanceAnalysis();
+
   // Fetch bank accounts
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchBankAccounts = async () => {
       console.log('🏦 Fetching bank accounts...');
+      setIsLoadingBankAccounts(true);
       try {
         const groupedBalances = await balanceRepository.getGroupedBalances();
         console.log(`✅ Found ${groupedBalances.length} bank connections`);
 
-        // Flatten accounts from all connections
         const accounts = groupedBalances.flatMap((group) =>
           group.accounts.map((account) => ({
             ...account,
@@ -74,116 +108,117 @@ export default function TrendsScreen() {
         setBankAccounts(accounts);
       } catch (err) {
         console.error('❌ Error fetching bank accounts:', err);
+      } finally {
+        setIsLoadingBankAccounts(false);
       }
     };
     fetchBankAccounts();
   }, []);
 
-  // Initialize selected accounts if empty
-  React.useEffect(() => {
-    console.log('🔄 Account Selection State:', {
-      currentSelected: Array.from(selectedAccounts),
-      availableAccounts: bankAccounts.map((acc) => ({
-        account_name: acc.account_name,
-        connection_id: acc.connection_id,
-      })),
-    });
+  // Fetch initial transactions
+  useEffect(() => {
+    console.log('🔄 Fetching initial transactions...');
+    const fetchInitialTransactions = async () => {
+      try {
+        const fromDate = new Date();
+        fromDate.setDate(1); // Start of current month
+        const toDate = new Date();
 
+        await fetchTransactions({
+          fromDate,
+          toDate,
+        });
+        console.log('✅ Initial transactions fetched');
+      } catch (err) {
+        console.error('❌ Error fetching initial transactions:', err);
+      }
+    };
+    fetchInitialTransactions();
+  }, []); // Only run on mount
+
+  // Initialize selected accounts
+  useEffect(() => {
     if (selectedAccounts.size === 0 && bankAccounts.length > 0) {
       const newSelectedAccounts = new Set(bankAccounts.map((acc) => acc.connection_id));
       console.log('🔄 Initializing selected accounts:', Array.from(newSelectedAccounts));
       setSelectedAccounts(newSelectedAccounts);
     }
-  }, [bankAccounts]);
+  }, [bankAccounts, selectedAccounts]);
 
-  const filteredTransactions = transactions
-    .filter((t) => {
-      return selectedAccounts.has(t.connection_id);
-    })
-    .map((t) => ({
-      ...t,
-      user_id: t.id, // Using id as user_id since it's required
-      account_id: t.connection_id, // Using connection_id as account_id since it's required
-      date: t.timestamp, // Using timestamp as date
-      type: (t.transaction_type === 'credit' ? 'credit' : 'debit') as 'debit' | 'credit', // Ensure correct type literal
-      created_at: t.timestamp, // Using timestamp as created_at
-      updated_at: t.timestamp, // Using timestamp as updated_at
-    }));
+  // Filter and transform transactions
+  const filteredTransactions = useMemo(() => {
+    return (transactions || [])
+      .filter((t) => {
+        if (!t || !t.connection_id) {
+          console.log('Filtering out transaction:', {
+            reason: 'missing required fields',
+            transaction: t,
+          });
+          return false;
+        }
+        if (bankAccounts.length > 0 && !selectedAccounts.has(t.connection_id)) {
+          console.log('Filtering out transaction:', {
+            reason: 'account not selected',
+            transaction: t,
+          });
+          return false;
+        }
+        return true;
+      })
+      .map((t) => {
+        const transformedTransaction = {
+          ...t,
+          user_id: t.user_id || t.id,
+          connection_id: t.connection_id,
+          timestamp: t.timestamp,
+          type: t.transaction_type?.toLowerCase() === 'credit' ? 'credit' : 'debit',
+          created_at: t.created_at || t.timestamp,
+        };
+        return transformedTransaction;
+      });
+  }, [transactions, bankAccounts, selectedAccounts]);
 
-  // Add debugging logs for transaction transformation
-  React.useEffect(() => {
+  // Debug logging for filtered transactions
+  useEffect(() => {
+    if (filteredTransactions.length > 0) {
+      console.log('Filtered Transactions Sample:', {
+        count: filteredTransactions.length,
+        first: filteredTransactions[0],
+        last: filteredTransactions[filteredTransactions.length - 1],
+      });
+    } else {
+      console.log('No filtered transactions available');
+    }
+  }, [filteredTransactions]);
+
+  // Update time range handlers
+  const handleSpendingTimeRangeChange = (newRange: 'week' | 'month') => {
+    setSpendingTimeRange(newRange);
+    updateSpendingTimeRange(newRange);
+  };
+
+  const handleBalanceTimeRangeChange = (type: 'Day' | 'Week' | 'Month' | 'Year') => {
+    setTimeRangeType(type);
+    // Convert the type to match the analytics slice format
+    const range = type.toLowerCase() as 'week' | 'month' | 'year';
+    updateBalanceTimeRange(range);
+  };
+
+  // Update useEffect to calculate analytics when transactions change
+  useEffect(() => {
     if (transactions.length > 0) {
-      console.log('🔍 Transaction Type Debug:');
-
-      // Log original transaction
-      const originalTransaction = transactions[0];
-      console.log('Original Transaction:', {
-        ...originalTransaction,
-        _type: 'original',
-        _hasTimestamp: 'timestamp' in originalTransaction,
-        _hasDate: 'date' in originalTransaction,
-        _fields: Object.keys(originalTransaction),
-      });
-
-      // Log transformed transaction
-      const transformedTransaction = filteredTransactions[0];
-      console.log('Transformed Transaction:', {
-        ...transformedTransaction,
-        _type: 'transformed',
-        _hasTimestamp: 'timestamp' in transformedTransaction,
-        _hasDate: 'date' in transformedTransaction,
-        _fields: Object.keys(transformedTransaction),
-      });
-
-      // Log transaction counts
-      console.log('Transaction Counts:', {
-        original: transactions.length,
-        filtered: filteredTransactions.length,
-        selectedAccounts: selectedAccounts.size,
-      });
-
-      // Log type compatibility
-      console.log('Type Compatibility Check:', {
-        forSpendingView: 'date' in transformedTransaction && 'type' in transformedTransaction,
-        forBalanceAnalysis: 'timestamp' in transformedTransaction,
-        allRequiredFields: {
-          id: 'id' in transformedTransaction,
-          user_id: 'user_id' in transformedTransaction,
-          account_id: 'account_id' in transformedTransaction,
-          amount: 'amount' in transformedTransaction,
-          date: 'date' in transformedTransaction,
-          type: 'type' in transformedTransaction,
-          timestamp: 'timestamp' in transformedTransaction,
-        },
-      });
+      calculateSpending(transactions);
+      calculateBalance(
+        transactions,
+        bankAccounts
+          .filter((acc) => selectedAccounts.has(acc.connection_id))
+          .map((acc) => ({
+            connection_id: acc.connection_id,
+            balance: acc.balance,
+          }))
+      );
     }
-  }, [transactions, filteredTransactions, selectedAccounts]);
-
-  const spendingAnalysis = useSpendingAnalysis(filteredTransactions, spendingTimeRange);
-  const balanceAnalysis = useBalanceAnalysis(
-    filteredTransactions,
-    timeRangeType,
-    bankAccounts
-      .filter((acc) => selectedAccounts.has(acc.connection_id))
-      .map((acc) => ({
-        connection_id: acc.connection_id,
-        balance: acc.balance,
-      }))
-  );
-
-  // Add debugging logs for analysis results
-  React.useEffect(() => {
-    if (spendingAnalysis) {
-      console.log('📊 Spending Analysis Debug:', {
-        totalTransactions: filteredTransactions.length,
-        categories: spendingAnalysis.categories.map((c) => ({
-          name: c.name,
-          amount: c.amount,
-        })),
-        timeRange: spendingTimeRange,
-      });
-    }
-  }, [spendingAnalysis, filteredTransactions.length, spendingTimeRange]);
+  }, [transactions, bankAccounts, selectedAccounts, calculateSpending, calculateBalance]);
 
   const timeRange = getTimeRange(timeRangeType);
 
@@ -286,61 +321,75 @@ export default function TrendsScreen() {
     </View>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
+  // Render functions
+  const renderContent = () => {
+    if (error) {
+      return (
+        <View style={[styles.container, styles.centered]}>
+          <Text style={styles.errorText}>Error loading transactions</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => fetchTransactions({})}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
 
-  if (error) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.error}>{error}</Text>
-      </View>
-    );
-  }
+    if ((refreshing && !transactions.length) || isLoadingBankAccounts) {
+      return (
+        <View style={[styles.container, styles.centered]}>
+          <LoadingOverlay visible={true} message="Loading..." />
+          <Text style={styles.loadingText}>Loading your financial data...</Text>
+        </View>
+      );
+    }
 
-  if (!spendingAnalysis || !balanceAnalysis) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.error}>No transaction data available</Text>
-      </View>
-    );
-  }
+    if (!spendingAnalysis || !balanceAnalysis) {
+      return (
+        <View style={[styles.container, styles.centered]}>
+          <Text style={styles.error}>No transaction data available</Text>
+        </View>
+      );
+    }
 
-  return (
-    <>
-      <ScrollView style={styles.container}>
-        {renderHeader()}
-        {renderTabs()}
-        {activeTab === 'Balance' && (
-          <BalanceView
-            data={balanceAnalysis}
-            timeRange={timeRange}
-            onTimeRangeChange={setTimeRangeType}
-          />
-        )}
-        {activeTab === 'Spending' && (
-          <SpendingView
-            data={spendingAnalysis}
-            timeRange={spendingTimeRange}
-            onTimeRangeChange={setSpendingTimeRange}
-            transactions={filteredTransactions}
-          />
-        )}
-        {activeTab === 'Target' && <TargetView />}
-      </ScrollView>
-      {renderAccountSelector()}
-    </>
-  );
+    return (
+      <>
+        <ScrollView style={styles.container}>
+          {renderHeader()}
+          {renderTabs()}
+          {activeTab === 'Balance' && (
+            <BalanceView
+              data={balanceAnalysis}
+              timeRange={timeRange}
+              onTimeRangeChange={handleBalanceTimeRangeChange}
+            />
+          )}
+          {activeTab === 'Spending' && (
+            <SpendingView
+              data={spendingAnalysis}
+              timeRange={spendingTimeRange}
+              onTimeRangeChange={handleSpendingTimeRangeChange}
+              transactions={filteredTransactions}
+            />
+          )}
+          {activeTab === 'Target' && <TargetView />}
+        </ScrollView>
+        {renderAccountSelector()}
+      </>
+    );
+  };
+
+  // Final render
+  return renderContent();
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A1A2F',
+    backgroundColor: colors.background,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -401,11 +450,6 @@ const styles = StyleSheet.create({
   comingSoonText: {
     color: colors.text.secondary,
     fontSize: 16,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   error: {
     color: '#FFF',
@@ -470,5 +514,28 @@ const styles = StyleSheet.create({
   checkboxSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  errorText: {
+    color: colors.text.primary,
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  retryText: {
+    color: colors.text.inverse,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingText: {
+    color: colors.text.primary,
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 16,
   },
 });

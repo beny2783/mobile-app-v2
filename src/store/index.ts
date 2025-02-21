@@ -6,6 +6,7 @@ import accountsReducer from './slices/accountsSlice';
 import budgetReducer from './slices/budget/slice';
 import trueLayerReducer from './slices/trueLayerSlice';
 import transactionsReducer from './slices/transactions/transactionsSlice';
+import analyticsReducer from './slices/analytics/analyticsSlice';
 
 export const store = configureStore({
   reducer: {
@@ -18,6 +19,7 @@ export const store = configureStore({
     budget: budgetReducer,
     trueLayer: trueLayerReducer,
     transactions: transactionsReducer,
+    analytics: analyticsReducer,
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware(),
 });

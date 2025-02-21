@@ -7,6 +7,29 @@ import {
   MerchantCategory,
 } from '../../../types/transaction';
 
+export interface TransactionPattern {
+  pattern: RegExp;
+  amount: number;
+  frequency: number; // in days
+}
+
+export interface SeasonalPattern {
+  month: number;
+  adjustment: number;
+}
+
+export interface ScheduledTransaction {
+  amount: number;
+  date: Date;
+}
+
+export interface TransactionPatterns {
+  recurringTransactions: TransactionPattern[];
+  recurringPayments: TransactionPattern[];
+  scheduledTransactions: ScheduledTransaction[];
+  seasonalPatterns: SeasonalPattern[];
+}
+
 export interface TransactionState {
   // Normalized transaction data
   transactions: EntityState<Transaction, string>;
@@ -31,6 +54,7 @@ export interface TransactionState {
     transactions: boolean;
     categories: boolean;
     sync: boolean;
+    patterns: boolean;
   };
 
   // Error states
@@ -38,6 +62,7 @@ export interface TransactionState {
     transactions: string | null;
     categories: string | null;
     sync: string | null;
+    patterns: string | null;
   };
 
   // Sync metadata
@@ -46,21 +71,7 @@ export interface TransactionState {
   };
 
   // Pattern detection
-  patterns: {
-    recurring: {
-      pattern: string;
-      amount: number;
-      frequency: number; // in days
-    }[];
-    seasonal: {
-      month: number;
-      adjustment: number;
-    }[];
-    scheduled: {
-      amount: number;
-      date: string;
-    }[];
-  };
+  patterns: TransactionPatterns;
 }
 
 // Action Payloads

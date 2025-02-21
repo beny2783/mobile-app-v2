@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/theme';
 import { CategoryTarget, TargetPeriod } from '../../types/target';
 import { LineChart } from 'react-native-chart-kit';
-import { useTransactions } from '../../hooks/useTransactions';
+import { useTransactions } from '../../store/slices/transactions/hooks';
 import { formatPeriod, getTimeRemaining } from '../../utils/dateUtils';
 import { useBudget } from '../../store/slices/budget/hooks';
 
@@ -35,7 +35,7 @@ export const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({
   onUpdate,
   onDelete,
 }) => {
-  const { transactions } = useTransactions();
+  const { allTransactions: transactions } = useTransactions();
   const { targetSummary } = useBudget();
   const [isEditing, setIsEditing] = useState(false);
   const [targetLimit, setTargetLimit] = useState(category.target_limit.toString());

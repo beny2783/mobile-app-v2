@@ -11,6 +11,7 @@ import {
   selectFilteredTransactions,
   selectTransactionGroups,
   selectTransactionStats,
+  selectTransactionPatterns,
   fetchTransactions,
   syncTransactions,
   fetchCategories,
@@ -18,6 +19,7 @@ import {
   setFilters,
   resetFilters,
   clearErrors,
+  detectTransactionPatterns,
 } from './transactionsSlice';
 import type {
   SetFiltersPayload,
@@ -32,6 +34,7 @@ export const useTransactions = () => {
   const filteredTransactions = useAppSelector(selectFilteredTransactions);
   const transactionGroups = useAppSelector(selectTransactionGroups);
   const stats = useAppSelector(selectTransactionStats);
+  const patterns = useAppSelector(selectTransactionPatterns);
   const filters = useAppSelector(selectTransactionFilters);
   const loading = useAppSelector(selectTransactionLoading);
   const errors = useAppSelector(selectTransactionErrors);
@@ -78,12 +81,17 @@ export const useTransactions = () => {
     dispatch(fetchCategories());
   }, [dispatch]);
 
+  const detectPatterns = useCallback(() => {
+    dispatch(detectTransactionPatterns());
+  }, [dispatch]);
+
   return {
     // State
     allTransactions,
     filteredTransactions,
     transactionGroups,
     stats,
+    patterns,
     filters,
     loading,
     errors,
@@ -98,6 +106,7 @@ export const useTransactions = () => {
     reset,
     clearAllErrors,
     refreshCategories,
+    detectPatterns,
   };
 };
 
