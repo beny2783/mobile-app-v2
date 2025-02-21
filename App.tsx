@@ -15,13 +15,48 @@ import { store } from './src/store';
 import { GlobalLoadingIndicator } from './src/components/common/GlobalLoadingIndicator';
 // import { NotificationService } from './src/services/NotificationService';
 import { useAuth } from './src/store/slices/auth/hooks';
-import ConnectBankScreen from './src/screens/ConnectBankScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const LoadingSpinner = () => (
   <ActivityIndicator size={Platform.OS === 'ios' ? 'large' : 48} color="#87CEEB" />
 );
+
+function AppContent() {
+  const { user, loading, checkUser } = useAuth();
+
+  useEffect(() => {
+    checkUser();
+  }, [checkUser]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <LoadingSpinner />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <StatusBar style="auto" />
+      <Stack.Navigator>
+        {!user ? (
+          <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
+        ) : (
+          <>
+            <Stack.Screen
+              name="AppTabs"
+              component={TabNavigator}
+              options={{ headerShown: false }}
+            />
+          </>
+        )}
+      </Stack.Navigator>
+      <GlobalLoadingIndicator />
+    </View>
+  );
+}
 
 export default function App() {
   // const notificationListener = useRef<ExpoNotifications.Subscription>();
@@ -71,72 +106,22 @@ export default function App() {
   return (
     <Provider store={store}>
       <ServiceProvider>
-        <NavigationContainer
-          linking={linking}
-          fallback={
-            <View style={styles.loadingContainer}>
-              <LoadingSpinner />
-            </View>
-          }
-        >
-          <AppContent />
+        <NavigationContainer linking={linking}>
+          <View style={{ flex: 1 }}>
+            <AppContent />
+          </View>
         </NavigationContainer>
       </ServiceProvider>
     </Provider>
   );
 }
 
-function AppContent() {
-  const { user, loading, checkUser } = useAuth();
-
-  useEffect(() => {
-    checkUser();
-  }, [checkUser]);
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <LoadingSpinner />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
-      <Stack.Navigator>
-        {!user ? (
-          <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
-        ) : (
-          <>
-            <Stack.Screen
-              name="AppTabs"
-              component={TabNavigator}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="ConnectBank"
-              component={ConnectBankScreen}
-              options={{ headerShown: false }}
-            />
-          </>
-        )}
-      </Stack.Navigator>
-      <GlobalLoadingIndicator />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    width: '100%',
-    height: '100%',
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
   },

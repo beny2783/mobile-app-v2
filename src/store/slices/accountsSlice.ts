@@ -214,14 +214,26 @@ export const selectTotalBalance = createSelector(
     (state: RootState) => state.accounts.accounts.byConnection,
   ],
   (connections, accounts, byConnection) => {
-    return Object.keys(connections).reduce((total, connectionId) => {
+    console.log('💰 Calculating total balance...');
+    console.log('📊 Connections:', Object.keys(connections).length);
+    console.log('🏦 Accounts:', Object.keys(accounts).length);
+
+    const total = Object.keys(connections).reduce((total, connectionId) => {
       const accountIds = byConnection[connectionId] || [];
+      console.log(`🔍 Connection ${connectionId}: ${accountIds.length} accounts`);
+
       const connectionTotal = accountIds.reduce((sum, accountId) => {
         const account = accounts[accountId];
+        console.log(`  Account ${accountId}: ${account?.balance || 0}`);
         return sum + (account?.balance || 0);
       }, 0);
+
+      console.log(`💵 Connection ${connectionId} total: ${connectionTotal}`);
       return total + connectionTotal;
     }, 0);
+
+    console.log(`💰 Final total balance: ${total}`);
+    return total;
   }
 );
 

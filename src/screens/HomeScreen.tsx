@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Text, ScrollView, RefreshControl } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,12 +12,16 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useAppSelector } from '../store/hooks';
 import { selectTotalBalance } from '../store/slices/accountsSlice';
 import { colors } from '../constants/theme';
+import * as WebBrowser from 'expo-web-browser';
+import { useServices } from '../contexts/ServiceContext';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen() {
   console.log('🏦 Rendering HomeScreen');
   const navigation = useNavigation<HomeScreenNavigationProp>();
+  const { trueLayerService } = useServices();
+  const [connecting, setConnecting] = useState(false);
 
   const {
     connections,
@@ -29,36 +33,74 @@ export default function HomeScreen() {
 
   const totalBalance = useAppSelector(selectTotalBalance);
 
-  // Load connections and their accounts on mount
+  // Load connections and their accounts on mount and when connections change
   useEffect(() => {
     const loadAllData = async () => {
       try {
+        console.log('🔄 Loading bank connections and accounts...');
         await loadConnections();
-        // Load accounts for each connection
-        await Promise.all(connections.map((conn) => loadAccountsByConnection(conn.id)));
       } catch (error) {
-        console.error('Failed to load all data:', error);
+        console.error('Failed to load connections:', error);
       }
     };
     loadAllData();
-  }, [loadConnections, loadAccountsByConnection]);
+  }, [loadConnections]);
+
+  // Load accounts whenever connections change
+  useEffect(() => {
+    const loadAccounts = async () => {
+      if (connections.length > 0) {
+        try {
+          console.log(`📊 Loading accounts for ${connections.length} connections...`);
+          await Promise.all(connections.map((conn) => loadAccountsByConnection(conn.id)));
+        } catch (error) {
+          console.error('Failed to load accounts:', error);
+        }
+      }
+    };
+    loadAccounts();
+  }, [connections, loadAccountsByConnection]);
 
   const handleSearchPress = () => {
     // TODO: Implement search functionality
   };
 
-  const handleAddPress = () => {
-    navigation.dispatch(
-      CommonActions.navigate({
-        name: 'ConnectBank',
-      })
-    );
+  const handleAddPress = async () => {
+    console.log('🔄 Starting bank connection process...');
+    setConnecting(true);
+
+    try {
+      const authUrl = trueLayerService.getAuthUrl();
+      console.log('🔗 Generated auth URL');
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        authUrl,
+        'spendingtracker://auth/callback'
+      );
+      console.log('📱 Browser session result:', result.type);
+
+      if (result.type === 'success') {
+        const url = result.url;
+        console.log('🔑 Received callback URL, navigating to Callback screen...');
+        // Navigate to Callback screen
+        navigation.navigate('Callback', { url });
+      }
+
+      await WebBrowser.coolDownAsync();
+    } catch (error) {
+      console.error('❌ Error connecting bank:', error);
+    } finally {
+      setConnecting(false);
+    }
   };
 
   const handleProfilePress = () => {
     navigation.dispatch(
       CommonActions.navigate({
-        name: 'Profile',
+        name: 'AppTabs',
+        params: {
+          screen: 'Profile',
+        },
       })
     );
   };
@@ -78,7 +120,10 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <LoadingOverlay visible={connectionsLoading} message="Loading your accounts..." />
+      <LoadingOverlay
+        visible={connectionsLoading || connecting}
+        message="Loading your accounts..."
+      />
       <HomeHeader
         onSearchPress={handleSearchPress}
         onAddPress={handleAddPress}
@@ -134,7 +179,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   emptyContainer: {
-    padding: 24,
+    padding: 20,
     alignItems: 'center',
   },
   emptyText: {
@@ -149,17 +194,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   errorContainer: {
-    margin: 16,
+    margin: 20,
     padding: 16,
-    backgroundColor: '#FFE5E5',
+    backgroundColor: colors.error,
     borderRadius: 8,
   },
   errorText: {
-    color: '#FF5252',
+    color: colors.text.inverse,
     fontSize: 14,
   },
   notificationTestContainer: {
-    marginTop: 24,
-    marginBottom: 24,
+    marginTop: 20,
+    paddingHorizontal: 20,
   },
 });

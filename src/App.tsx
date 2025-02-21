@@ -1,27 +1,23 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Provider as PaperProvider, MD3LightTheme, Portal } from 'react-native-paper';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthScreen from './screens/AuthScreen';
 import AuthCallbackScreen from './screens/AuthCallbackScreen';
 import { TabNavigator } from './navigation/TabNavigator';
 import CallbackScreen from './screens/CallbackScreen';
-import ConnectBankScreen from './screens/ConnectBankScreen';
-import { StatusBar } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { colors } from './constants/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { linking } from './navigation/linking';
-
-export type RootStackParamList = {
-  Auth: { error?: string };
-  AuthCallback: { type: string; url?: string };
-  Main: undefined;
-  ConnectBank: undefined;
-  Callback: undefined;
-  AppTabs: undefined;
-};
+import { Provider } from 'react-redux';
+import { RootStackParamList } from './navigation/types';
+import { ServiceProvider } from './contexts/ServiceContext';
+import { setupErrorHandling } from './utils/errorHandling';
+import { store } from './store';
+import { GlobalLoadingIndicator } from './components/common/GlobalLoadingIndicator';
+import { useAuth } from './store/slices/auth/hooks';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -38,77 +34,73 @@ const theme = {
   },
 };
 
-function Navigation() {
-  const { user, error, signIn } = useAuth();
+const LoadingSpinner = () => (
+  <ActivityIndicator size={Platform.OS === 'ios' ? 'large' : 48} color="#87CEEB" />
+);
 
-  if (error) {
+function AppContent() {
+  const { user, loading, checkUser } = useAuth();
+
+  useEffect(() => {
+    checkUser();
+  }, [checkUser]);
+
+  if (loading) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.button} onPress={signIn}>
-          <Text style={styles.buttonText}>Sign In</Text>
-        </TouchableOpacity>
+      <View style={styles.loadingContainer}>
+        <LoadingSpinner />
       </View>
     );
   }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {!user ? (
-        <>
-          <Stack.Screen name="Auth" component={AuthScreen} />
-          <Stack.Screen name="AuthCallback" component={AuthCallbackScreen} />
-        </>
-      ) : (
-        <>
-          <Stack.Screen name="Main" component={TabNavigator} />
-          <Stack.Screen name="ConnectBank" component={ConnectBankScreen} />
-          <Stack.Screen name="Callback" component={CallbackScreen} />
-        </>
-      )}
-    </Stack.Navigator>
+    <View style={styles.container}>
+      <StatusBar style="light" />
+      <Stack.Navigator>
+        {!user ? (
+          <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
+        ) : (
+          <>
+            <Stack.Screen
+              name="AppTabs"
+              component={TabNavigator}
+              options={{ headerShown: false }}
+            />
+          </>
+        )}
+      </Stack.Navigator>
+    </View>
   );
 }
 
 export default function App() {
   return (
-    <PaperProvider theme={theme}>
-      <Portal.Host>
-        <SafeAreaProvider>
-          <AuthProvider>
-            <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-            <NavigationContainer linking={linking}>
-              <View style={{ flex: 1 }}>
-                <Navigation />
-              </View>
-            </NavigationContainer>
-          </AuthProvider>
-        </SafeAreaProvider>
-      </Portal.Host>
-    </PaperProvider>
+    <Provider store={store}>
+      <PaperProvider theme={theme}>
+        <Portal.Host>
+          <SafeAreaProvider>
+            <ServiceProvider>
+              <StatusBar style="dark" />
+              <NavigationContainer linking={linking}>
+                <View style={{ flex: 1 }}>
+                  <AppContent />
+                </View>
+              </NavigationContainer>
+            </ServiceProvider>
+          </SafeAreaProvider>
+        </Portal.Host>
+      </PaperProvider>
+    </Provider>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    color: 'red',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 });

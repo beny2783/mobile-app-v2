@@ -64,22 +64,58 @@ export class AccountsAdapter {
 
   async getAccountsByConnection(connectionId: string): Promise<DatabaseBankAccount[]> {
     console.log('🏦 AccountsAdapter: Fetching accounts for connection:', connectionId);
-    const { data: accounts, error } = await supabase
+    const user = await authRepository.getUser();
+    if (!user) throw new TrueLayerError('Authentication required', TrueLayerErrorCode.UNAUTHORIZED);
+
+    // First get all accounts for the connection
+    const { data: accounts, error: accountsError } = await supabase
       .from('bank_accounts')
       .select('*')
-      .eq('connection_id', connectionId);
+      .eq('connection_id', connectionId)
+      .eq('user_id', user.id);
 
-    if (error) {
+    if (accountsError) {
       throw new TrueLayerError(
         'Failed to fetch accounts',
         TrueLayerErrorCode.FETCH_ACCOUNTS_FAILED,
         undefined,
-        error
+        accountsError
       );
     }
 
-    console.log(`✅ AccountsAdapter: Found ${accounts?.length || 0} accounts`);
-    return accounts || [];
+    // Then get the latest balance for each account
+    const { data: balances, error: balancesError } = await supabase
+      .from('balances')
+      .select('*')
+      .eq('connection_id', connectionId)
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false });
+
+    if (balancesError) {
+      throw new TrueLayerError(
+        'Failed to fetch balances',
+        TrueLayerErrorCode.FETCH_ACCOUNTS_FAILED,
+        undefined,
+        balancesError
+      );
+    }
+
+    // Merge the latest balances into the accounts
+    const accountsWithBalances =
+      accounts?.map((account) => {
+        const latestBalance = balances?.find((b) => b.account_id === account.account_id);
+        return {
+          ...account,
+          balance: latestBalance?.current || 0,
+        };
+      }) || [];
+
+    console.log(`✅ AccountsAdapter: Found ${accountsWithBalances.length} accounts with balances`);
+    accountsWithBalances.forEach((account) => {
+      console.log(`  Account ${account.account_name}: ${account.balance}`);
+    });
+
+    return accountsWithBalances;
   }
 
   private transformConnections(

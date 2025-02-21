@@ -34,15 +34,6 @@ export function AppTabs() {
         }}
       />
       <Tab.Screen
-        name="Add Bank"
-        component={HomeScreen} // This will be replaced with proper screen later
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="add-circle-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{

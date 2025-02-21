@@ -1,5 +1,8 @@
 export type AppTabParamList = {
-  Home: undefined;
+  Home: {
+    error?: string;
+    success?: boolean;
+  };
   ConnectBank: undefined;
   Balances: undefined;
   Transactions: {

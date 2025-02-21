@@ -1,58 +1,36 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useEffect } from 'react';
 import { getTrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
-import { RootStackParamList } from '../navigation/types';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AppTabParamList } from '../types/navigation';
+import { useAppDispatch } from '../store/hooks';
+import { fetchConnections } from '../store/slices/accountsSlice';
 
-type CallbackScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
-type CallbackScreenRouteProp = RouteProp<RootStackParamList, 'Callback'>;
-
-interface CallbackParams {
-  url?: string;
-}
+type CallbackScreenNavigationProp = NativeStackNavigationProp<AppTabParamList>;
+type CallbackScreenRouteProp = RouteProp<AppTabParamList, 'Callback'>;
 
 export default function CallbackScreen() {
   const navigation = useNavigation<CallbackScreenNavigationProp>();
   const route = useRoute<CallbackScreenRouteProp>();
-  const params = route.params as CallbackParams;
+  const dispatch = useAppDispatch();
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
         console.log('🔄 Starting callback handling...');
 
-        // Log the raw route params
-        console.log('📝 Route params:', {
-          params,
-          hasUrl: !!params?.url,
-        });
-
-        const urlString = params?.url;
+        // Get the URL from route params
+        const urlString = route.params?.url;
         if (!urlString) {
           console.error('❌ No URL in callback params');
-          navigation.navigate('ConnectBank', { error: 'Missing callback URL' });
+          navigation.navigate('Home', { error: 'Missing callback URL' });
           return;
         }
 
-        // Log the parsed URL details
+        // Parse the URL
         const url = new URL(urlString);
-        console.log('🔍 Parsed callback URL:', {
-          fullUrl: url.toString(),
-          protocol: url.protocol,
-          host: url.host,
-          pathname: url.pathname,
-          search: url.search,
-          allParams: Object.fromEntries(url.searchParams.entries()),
-        });
-
         const code = url.searchParams.get('code');
-        console.log('🎫 Authorization code:', {
-          hasCode: !!code,
-          codeLength: code?.length,
-          codePrefix: code?.substring(0, 10),
-        });
 
         if (code) {
           // Log TrueLayer service initialization
@@ -65,12 +43,12 @@ export default function CallbackScreen() {
           const trueLayer = getTrueLayerService();
 
           try {
-            const result = await trueLayer.exchangeCode(code);
-            console.log('✅ Code exchange successful:', {
-              hasAccessToken: !!result?.access_token,
-              hasRefreshToken: !!result?.refresh_token,
-              expiresIn: result?.expires_in,
-            });
+            await trueLayer.exchangeCode(code);
+            console.log('✅ Code exchange successful');
+
+            // Fetch updated connections after successful bank connection
+            await dispatch(fetchConnections());
+            console.log('✅ Connections updated in Redux store');
 
             // Navigate back to Home screen with success
             navigation.navigate('Home', { success: true });
@@ -102,29 +80,17 @@ export default function CallbackScreen() {
 
         // If no code or error, go back to home screen
         console.log('⚠️ No code or error in callback');
-        navigation.navigate('Home');
+        navigation.navigate('Home', { error: 'Invalid callback URL' });
       } catch (error) {
         console.error('💥 Failed to handle callback:', error);
-        navigation.navigate('ConnectBank', {
+        navigation.navigate('Home', {
           error: error instanceof Error ? error.message : 'Failed to complete connection',
         });
       }
     };
 
     handleCallback();
-  }, [navigation, params]);
+  }, [navigation, dispatch, route.params]);
 
-  return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" testID="callback-loading-indicator" />
-    </View>
-  );
+  return null;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

@@ -2,10 +2,6 @@ export type RootStackParamList = {
   Auth: { error?: string };
   AuthCallback: { type: string; url?: string };
   AppTabs: undefined;
-  ConnectBank: {
-    error?: string;
-    success?: boolean;
-  };
   Home: {
     error?: string;
     success?: boolean;
