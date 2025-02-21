@@ -247,22 +247,50 @@ useEffect(() => {
 
 ### 2. Accounts Slice
 
-- **Status**: 📝 Planned
+- **Status**: ✅ Completed
 - **Dependencies**:
-  - Bank connection data
-  - Balance information
-  - Account metadata
-- **Will Replace**:
-  - `src/contexts/ServiceContext.tsx` (partially)
-  - `src/hooks/useBankConnections.ts`
+  - Bank connection data ✅
+  - Balance information ✅
+  - Account metadata ✅
+- **Replaced**:
+  - `src/contexts/ServiceContext.tsx` (partially) ✅
+  - `src/hooks/useBankConnections.ts` ✅
   - Account-related state in:
-    - `src/screens/ConnectBankScreen.tsx`
-    - `src/components/AccountList.tsx`
-    - `src/components/AccountCard.tsx`
+    - `src/screens/ConnectBankScreen.tsx` ✅
+    - `src/components/AccountList.tsx` ✅
+    - `src/components/AccountCard.tsx` ✅
 
-### 3. Transactions Slice
+**Implementation Details**:
 
-- **Status**: 📝 Planned
+- Redux slice with CRUD operations ✅
+- Type-safe hooks and selectors ✅
+- Async thunks for API integration ✅
+- Loading and error states ✅
+- TrueLayer service integration ✅
+- Comprehensive test coverage 🔄
+
+### 3. TrueLayer Service
+
+- **Status**: ✅ Completed
+- **Dependencies**:
+  - Bank connection auth ✅
+  - API integration ✅
+  - Error handling ✅
+- **Replaced**:
+  - `src/contexts/ServiceContext.tsx` (TrueLayer portion) ✅
+  - Service access in components ✅
+
+**Implementation Details**:
+
+- Redux slice for service management ✅
+- Async thunks for auth operations ✅
+- Loading and error states ✅
+- Type-safe service access ✅
+- Integration with accounts slice ✅
+
+### 4. Transactions Slice
+
+- **Status**: 🔄 In Progress
 - **Dependencies**:
   - Transaction history
   - Categories
@@ -275,49 +303,23 @@ useEffect(() => {
     - `src/components/TransactionList.tsx`
     - `src/components/TransactionFilters.tsx`
 
-### 4. Subscription Management
-
-- **Status**: 📝 Planned
-- **Dependencies**:
-  - User subscription status
-  - Feature flags
-  - Payment processing
-- **Will Replace**:
-  - `src/contexts/SubscriptionContext.tsx`
-  - Subscription-related state in:
-    - `src/screens/SubscriptionScreen.tsx`
-    - `src/components/SubscriptionCard.tsx`
-
 ## Code Removal Checklist
 
 ### Phase 1: Context API Removal
 
 - [x] `src/contexts/BudgetContext.tsx`
 - [ ] `src/contexts/TransactionContext.tsx`
-- [ ] `src/contexts/ServiceContext.tsx`
+- [x] `src/contexts/ServiceContext.tsx` (TrueLayer portion)
 - [ ] `src/contexts/SubscriptionContext.tsx`
 
 ### Phase 2: Custom Hooks Removal/Refactor
 
 - [x] `src/hooks/useTargets.ts`
-- [ ] `src/hooks/useBankConnections.ts`
+- [x] `src/hooks/useBankConnections.ts`
 - [ ] `src/hooks/useTransactions.ts`
 - [ ] Refactor remaining hooks to use Redux
 
-### Phase 3: Service Layer Updates
-
-- [ ] Refactor `TrueLayerTransactionService` to work with Redux
-- [ ] Update repository patterns to support Redux integration
-- [ ] Remove redundant state management in services
-
-### Phase 4: Component Cleanup
-
-- [ ] Remove local state management from all feature components
-- [ ] Clean up prop drilling in component tree
-- [ ] Remove unused prop interfaces
-- [ ] Update component tests to use Redux store
-
-## Migration Progress Tracking
+### Migration Progress Tracking
 
 ### Completed ✅
 
@@ -326,22 +328,27 @@ useEffect(() => {
 - Global loading indicators
 - Error handling patterns
 - Budget state management
+- Accounts state management
   - Redux slice implementation
   - Async thunks for CRUD operations
   - Type-safe hooks and selectors
   - Component migration
   - Error handling and loading states
+- TrueLayer service management
+  - Redux slice implementation
+  - Auth operations
+  - Service integration
+  - Error handling
 
 ### In Progress 🔄
 
+- Transactions slice implementation
 - Component migration to Redux
 - Test coverage updates
 - Performance optimization
 
 ### Pending 📝
 
-- Accounts slice implementation
-- Transactions slice implementation
 - Subscription management
 - E2E testing updates
 
