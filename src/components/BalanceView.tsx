@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+  ActivityIndicator,
+} from 'react-native';
 import { LineChart, DataPoint } from 'react-native-gifted-charts';
 import { Ionicons } from '@expo/vector-icons';
-import { formatCurrency, formatDate } from '../utils/balanceUtils';
+import { formatCurrency } from '../utils/balanceUtils';
 import { colors } from '../constants/theme';
 import { TimeRange, BalanceAnalysisData } from '../types/bank/analysis';
 
@@ -14,344 +21,255 @@ interface CustomDataPoint extends DataPoint {
 }
 
 interface BalanceViewProps {
-  data: BalanceAnalysisData;
-  timeRange: TimeRange;
-  onTimeRangeChange: (type: TimeRange['type']) => void;
+  data: BalanceAnalysisData | null;
+  timeRange: 'week' | 'month' | 'year';
+  onTimeRangeChange: (range: 'week' | 'month' | 'year') => void;
+  loading?: boolean;
+  error?: string | null;
 }
 
-export const BalanceView: React.FC<BalanceViewProps> = ({ data, timeRange, onTimeRangeChange }) => {
-  useEffect(() => {
-    console.log('🏦 BalanceView - Using new types:');
-    console.log('Data:', {
-      currentBalance: data.currentBalance,
-      startingBalance: data.startingBalance,
-      timeRange: {
-        type: timeRange.type,
-        startDate: timeRange.startDate,
-        endDate: timeRange.endDate,
-      },
-    });
-  }, [data, timeRange]);
+// Helper function to format date string
+const formatDateLabel = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  });
+};
 
-  useEffect(() => {
-    console.log('🏦 Chart Data:', {
-      labels: data.chartData.labels,
-      data: data.chartData.current,
-      timeRange: {
-        type: timeRange.type,
-        startDate: timeRange.startDate.toISOString(),
-        endDate: timeRange.endDate.toISOString(),
-      },
-    });
-  }, [data, timeRange]);
-
+export const BalanceView: React.FC<BalanceViewProps> = ({
+  data,
+  timeRange,
+  onTimeRangeChange,
+  loading = false,
+  error = null,
+}) => {
   const [selectedPoint, setSelectedPoint] = useState<CustomDataPoint | null>(null);
 
-  // Transform data for the chart
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>No balance data available</Text>
+      </View>
+    );
+  }
+
+  // Transform data for the chart with proper typing
   const chartData: CustomDataPoint[] = data.chartData.current.map((value, index) => ({
     value,
-    label: data.chartData.labels[index],
-    date: (() => {
-      const date = new Date(timeRange.startDate);
-      date.setDate(date.getDate() + index);
-      return date.toISOString();
-    })(),
-    showDataPoint: true,
+    date: data.chartData.labels[index],
+    label: formatDateLabel(data.chartData.labels[index]),
   }));
+
+  const handlePointPress = (point: DataPoint) => {
+    setSelectedPoint(point as CustomDataPoint);
+  };
 
   return (
     <View style={styles.container}>
-      {/* Balance Overview */}
-      <View style={styles.header}>
-        <Text style={styles.title}>This {timeRange.type.toLowerCase()}</Text>
-        <Text style={styles.amount}>{formatCurrency(data.currentBalance)}</Text>
-        <Text style={styles.subtitle}>
-          {selectedPoint
-            ? `Balance on ${formatDate(new Date(selectedPoint.date))}`
-            : "Today's Balance"}
-        </Text>
+      <View style={styles.timeSelector}>
+        {(['week', 'month', 'year'] as const).map((range) => (
+          <TouchableOpacity
+            key={range}
+            style={[styles.timeButton, timeRange === range && styles.activeTimeButton]}
+            onPress={() => onTimeRangeChange(range)}
+          >
+            <Text
+              style={[styles.timeButtonText, timeRange === range && styles.activeTimeButtonText]}
+            >
+              {range.charAt(0).toUpperCase() + range.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Balance Chart */}
-      <View style={styles.chartWrapper}>
+      <View style={styles.balanceContainer}>
+        <Text style={styles.label}>Current Balance</Text>
+        <Text style={styles.balance}>{formatCurrency(data.currentBalance)}</Text>
+        <View style={styles.changeContainer}>
+          <Text
+            style={[
+              styles.changeText,
+              data.currentBalance > data.startingBalance
+                ? styles.positiveChange
+                : styles.negativeChange,
+            ]}
+          >
+            {formatCurrency(data.currentBalance - data.startingBalance)}
+          </Text>
+          <Text style={styles.changePeriod}>this {timeRange}</Text>
+        </View>
+      </View>
+
+      <View style={styles.chartContainer}>
         <LineChart
           data={chartData}
+          width={width - 32}
           height={220}
-          width={width - 64}
-          hideDataPoints={false}
-          spacing={40}
-          color="#2EC4B6"
-          thickness={3}
-          startFillColor="rgba(46, 196, 182, 0.1)"
-          endFillColor="rgba(46, 196, 182, 0.01)"
-          initialSpacing={20}
-          endSpacing={20}
-          noOfSections={6}
-          yAxisColor="rgba(255,255,255,0.1)"
-          xAxisColor="rgba(255,255,255,0.1)"
-          yAxisTextStyle={{ color: 'white', fontSize: 12 }}
-          xAxisTextStyle={{
-            color: '#FFFFFF',
-            fontSize: 11,
-            fontWeight: '500',
-          }}
-          yAxisLabelSuffix=""
-          yAxisLabelPrefix="£"
-          rulesColor="rgba(255,255,255,0.1)"
-          rulesType="solid"
-          yAxisTextNumberOfLines={1}
-          yAxisLabelWidth={60}
-          hideOrigin={true}
-          maxValue={Math.ceil(Math.max(...data.chartData.current) * 1.05)}
-          minValue={Math.floor(Math.min(...data.chartData.current) * 0.95)}
-          xAxisLabelsVerticalShift={10}
-          formatXLabel={(label: string) => {
-            const date = new Date(label);
-            return `${date.getDate()} ${date.toLocaleString('default', { month: 'short' })}`;
-          }}
-          dataPointsHeight={6}
-          dataPointsWidth={6}
-          dataPointsColor="#2EC4B6"
-          dataPointsShape="circle"
-          onPress={(point: DataPoint) => {
-            if (point.date && point.label) {
-              setSelectedPoint(point as CustomDataPoint);
-            }
-          }}
+          yAxisLabelSuffix="£"
+          hideDataPoints
           curved
-          renderTooltip={(point: DataPoint) => {
-            if (!selectedPoint || selectedPoint.value !== point.value || !point.date) return null;
-            return (
-              <View style={styles.tooltip}>
-                <Text style={styles.tooltipText}>{formatCurrency(point.value)}</Text>
-                <Text style={styles.tooltipDate}>{formatDate(new Date(point.date))}</Text>
-              </View>
-            );
-          }}
+          color={colors.primary}
+          thickness={2}
+          startFillColor={`${colors.primary}33`}
+          endFillColor="transparent"
+          initialSpacing={16}
+          endSpacing={16}
+          onPress={handlePointPress}
+          containerStyle={styles.chartContainer}
+          formatXLabel={(label) => formatDateLabel(label)}
         />
       </View>
 
-      {/* Time Range Selector */}
-      <View style={styles.timeSelector}>
-        <TouchableOpacity
-          style={[styles.timeButton, timeRange.type === 'Month' && styles.activeTimeButton]}
-          onPress={() => onTimeRangeChange('Month')}
-        >
-          <Text
-            style={[
-              styles.timeButtonText,
-              timeRange.type === 'Month' && styles.activeTimeButtonText,
-            ]}
-          >
-            Month
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.timeButton, timeRange.type === 'Year' && styles.activeTimeButton]}
-          onPress={() => onTimeRangeChange('Year')}
-        >
-          <Text
-            style={[
-              styles.timeButtonText,
-              timeRange.type === 'Year' && styles.activeTimeButtonText,
-            ]}
-          >
-            Year
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Breakdown */}
-      <View style={styles.breakdownContainer}>
-        <Text style={styles.breakdownTitle}>Breakdown</Text>
-
-        {/* Starting Balance */}
-        <View style={styles.breakdownItem}>
-          <View style={styles.breakdownLeft}>
-            <View style={[styles.iconContainer, { backgroundColor: '#4CAF50' }]}>
-              <Ionicons name="play" size={20} color="#FFF" />
-            </View>
-            <View>
-              <Text style={styles.breakdownLabel}>Starting balance</Text>
-              <Text style={styles.breakdownDate}>On {formatDate(timeRange.startDate)}</Text>
-            </View>
-          </View>
-          <Text style={styles.amount}>{formatCurrency(data.startingBalance)}</Text>
+      <View style={styles.statsContainer}>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Money In</Text>
+          <Text style={styles.statValue}>{formatCurrency(data.moneyIn)}</Text>
         </View>
-
-        {/* Money In */}
-        <View style={styles.breakdownItem}>
-          <View style={styles.breakdownLeft}>
-            <View style={[styles.iconContainer, { backgroundColor: '#4CAF50' }]}>
-              <Ionicons name="add" size={20} color="#FFF" />
-            </View>
-            <Text style={styles.breakdownLabel}>Total money in</Text>
-          </View>
-          <Text style={styles.positiveAmount}>{formatCurrency(data.moneyIn)}</Text>
-        </View>
-
-        {/* Money Out */}
-        <View style={styles.breakdownItem}>
-          <View style={styles.breakdownLeft}>
-            <View style={[styles.iconContainer, { backgroundColor: '#F44336' }]}>
-              <Ionicons name="remove" size={20} color="#FFF" />
-            </View>
-            <Text style={styles.breakdownLabel}>Total money out</Text>
-          </View>
-          <Text style={styles.negativeAmount}>{formatCurrency(data.moneyOut)}</Text>
-        </View>
-
-        {/* Upcoming */}
-        <View style={styles.breakdownItem}>
-          <View style={styles.breakdownLeft}>
-            <View style={[styles.iconContainer, { backgroundColor: '#9E9E9E' }]}>
-              <Ionicons name="calendar-outline" size={20} color="#FFF" />
-            </View>
-            <Text style={styles.breakdownLabel}>Total upcoming</Text>
-          </View>
-          <Text style={styles.amount}>{formatCurrency(data.upcomingPayments.total)}</Text>
-        </View>
-
-        {/* Estimated Balance */}
-        <View style={styles.breakdownItem}>
-          <View style={styles.breakdownLeft}>
-            <View style={[styles.iconContainer, { backgroundColor: '#2196F3' }]}>
-              <Ionicons name="calculator-outline" size={20} color="#FFF" />
-            </View>
-            <View>
-              <Text style={styles.breakdownLabel}>Estimated balance</Text>
-              <Text style={styles.breakdownDate}>
-                On {formatDate(new Date(data.estimatedBalance.date))}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.amount}>{formatCurrency(data.estimatedBalance.amount)}</Text>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Money Out</Text>
+          <Text style={styles.statValue}>{formatCurrency(data.moneyOut)}</Text>
         </View>
       </View>
+
+      {data.upcomingPayments.total > 0 && (
+        <View style={styles.upcomingContainer}>
+          <Text style={styles.upcomingTitle}>Upcoming Payments</Text>
+          <Text style={styles.upcomingAmount}>{formatCurrency(data.upcomingPayments.total)}</Text>
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     padding: 16,
   },
-  header: {
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
   },
-  title: {
-    color: '#FFF',
+  errorText: {
+    color: '#FF4444', // Explicit error color
     fontSize: 16,
-    marginBottom: 8,
-  },
-  amount: {
-    color: '#FFF',
-    fontSize: 32,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  subtitle: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 14,
-  },
-  chartWrapper: {
-    marginBottom: 24,
-    backgroundColor: '#0A1A2F',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  tooltip: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    padding: 12,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-    minWidth: 120,
-  },
-  tooltipText: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  tooltipDate: {
-    color: 'rgba(0, 0, 0, 0.6)',
-    fontSize: 12,
+    textAlign: 'center',
+    marginHorizontal: 20,
   },
   timeSelector: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 20,
+    backgroundColor: colors.card,
+    borderRadius: 8,
     padding: 4,
+    margin: 16,
     marginBottom: 24,
   },
   timeButton: {
     flex: 1,
     paddingVertical: 8,
     alignItems: 'center',
-    borderRadius: 16,
+    borderRadius: 6,
   },
   activeTimeButton: {
-    backgroundColor: '#FFF',
+    backgroundColor: colors.primary,
   },
   timeButtonText: {
-    color: '#FFF',
+    color: colors.text.secondary,
     fontSize: 14,
+    fontWeight: '500',
   },
   activeTimeButtonText: {
-    color: '#0A1A2F',
+    color: colors.text.inverse,
   },
-  breakdownContainer: {
-    gap: 16,
+  balanceContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
   },
-  breakdownTitle: {
-    color: '#FFF',
+  label: {
+    color: colors.text.secondary,
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  balance: {
+    color: colors.text.primary,
+    fontSize: 32,
+    fontWeight: '600',
+  },
+  changeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  changeText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginRight: 4,
+  },
+  positiveChange: {
+    color: '#4CAF50', // Explicit success color
+  },
+  negativeChange: {
+    color: '#F44336', // Explicit error color
+  },
+  changePeriod: {
+    color: colors.text.secondary,
+    fontSize: 14,
+  },
+  chartContainer: {
+    marginBottom: 24,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statLabel: {
+    color: colors.text.secondary,
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  statValue: {
+    color: colors.text.primary,
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 8,
   },
-  breakdownItem: {
+  upcomingContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  breakdownLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  iconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  breakdownLabel: {
-    color: '#FFF',
-    fontSize: 14,
-  },
-  breakdownDate: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 12,
-  },
-  positiveAmount: {
-    color: '#4CAF50',
+  upcomingTitle: {
+    color: colors.text.primary,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
   },
-  negativeAmount: {
-    color: '#F44336',
+  upcomingAmount: {
+    color: '#F44336', // Explicit error color
     fontSize: 16,
     fontWeight: '600',
   },

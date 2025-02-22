@@ -29,6 +29,8 @@ interface SpendingViewProps {
   timeRange: 'week' | 'month';
   onTimeRangeChange: (range: 'week' | 'month') => void;
   transactions: Transaction[];
+  loading?: boolean;
+  error?: string | null;
 }
 
 export const SpendingView: React.FC<SpendingViewProps> = ({
@@ -36,14 +38,14 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
   timeRange,
   onTimeRangeChange,
   transactions,
+  loading = false,
+  error = null,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedPieSection, setSelectedPieSection] = useState<number | null>(null);
   const [aiInsights, setAiInsights] = useState<any[]>([]);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [insights, setInsights] = useState<AIInsight[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Animation values
   const categoryDetailsHeight = useRef(new Animated.Value(0)).current;
@@ -208,6 +210,7 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
     return [
       {
         id: '1',
+        transaction_id: 'mock-txn-1',
         amount: -25.5,
         timestamp: '2024-03-15',
         description: 'Local Store',
@@ -215,11 +218,14 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
         connection_id: 'test',
         currency: 'GBP',
         transaction_type: 'debit',
+        transaction_category: category,
+        merchant_name: 'Local Store',
         created_at: '2024-03-15',
         updated_at: '2024-03-15',
       },
       {
         id: '2',
+        transaction_id: 'mock-txn-2',
         amount: -32.8,
         timestamp: '2024-03-14',
         description: 'Online Shop',
@@ -227,11 +233,14 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
         connection_id: 'test',
         currency: 'GBP',
         transaction_type: 'debit',
+        transaction_category: category,
+        merchant_name: 'Online Shop',
         created_at: '2024-03-14',
         updated_at: '2024-03-14',
       },
       {
         id: '3',
+        transaction_id: 'mock-txn-3',
         amount: -18.99,
         timestamp: '2024-03-12',
         description: 'Service Provider',
@@ -239,6 +248,8 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
         connection_id: 'test',
         currency: 'GBP',
         transaction_type: 'debit',
+        transaction_category: category,
+        merchant_name: 'Service Provider',
         created_at: '2024-03-12',
         updated_at: '2024-03-12',
       },
@@ -340,33 +351,50 @@ export const SpendingView: React.FC<SpendingViewProps> = ({
   };
 
   const handleQuestionSelect = async (questionId: string) => {
-    setIsLoading(true);
-    setError(null);
+    setLoadingInsights(true);
     try {
       const newInsights = await localAIService.analyzeSpecificQuestion(questionId, transactions);
       setInsights(newInsights);
     } catch (err) {
-      setError('Failed to analyze question. Please try again.');
       console.error('Error analyzing question:', err);
     } finally {
-      setIsLoading(false);
+      setLoadingInsights(false);
     }
   };
+
+  // Add loading and error states
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>No spending data available</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
       <QuestionCards onSelectQuestion={handleQuestionSelect} />
 
-      {isLoading && (
+      {loadingInsights && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Analyzing your transactions...</Text>
-        </View>
-      )}
-
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
         </View>
       )}
 
@@ -783,16 +811,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 16,
   },
-  errorContainer: {
-    padding: 16,
-    backgroundColor: 'rgba(255, 0, 0, 0.1)',
-    borderRadius: 8,
-    margin: 16,
-  },
-  errorText: {
-    color: '#FF4444',
-    textAlign: 'center',
-  },
   selectedCategoryOverlay: {
     position: 'absolute',
     top: '50%',
@@ -868,5 +886,16 @@ const styles = StyleSheet.create({
   },
   merchantInfo: {
     flex: 1,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#FF4444',
+    fontSize: 16,
+    textAlign: 'center',
+    marginHorizontal: 20,
   },
 });

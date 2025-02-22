@@ -21,13 +21,9 @@ import { getTimeRange } from '../utils/balanceUtils';
 import { createBalanceRepository } from '../repositories/balance';
 import { DatabaseBankAccount } from '../types/bank/database';
 import type { TimeRange } from '../types/bank/analysis';
-import { LoadingSpinner } from '../components/LoadingSpinner';
 import LoadingOverlay from '../components/LoadingOverlay';
 import type { Transaction } from '../types/transaction/index';
-import type { DatabaseTransaction } from '../types/transaction';
-import type { BaseTransaction } from '../types/transaction/index';
 import { NoBankPrompt } from '../components/NoBankPrompt';
-import { TimeRangeSelector } from '../components/TimeRangeSelector';
 
 type TabType = 'Balance' | 'Spending' | 'Target';
 
@@ -42,14 +38,12 @@ interface ExtendedBankAccount extends DatabaseBankAccount {
 }
 
 export default function TrendsScreen() {
-  // 1. All hooks must be called before any conditional returns
-  const [timeRangeType, setTimeRangeType] = useState<TimeRange['type']>('Month');
+  // Local UI state
   const [activeTab, setActiveTab] = useState<TabType>('Balance');
   const [showAccountSelector, setShowAccountSelector] = useState(false);
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [bankAccounts, setBankAccounts] = useState<ExtendedBankAccount[]>([]);
   const [isLoadingBankAccounts, setIsLoadingBankAccounts] = useState(true);
-  const [spendingTimeRange, setSpendingTimeRange] = useState<'week' | 'month'>('month');
 
   // Redux hooks
   const {
@@ -58,35 +52,50 @@ export default function TrendsScreen() {
     errors,
     fetch: fetchTransactions,
   } = useTransactions();
+
   const {
     connections,
     loadConnections: fetchAccounts,
     connectionsLoading: isLoadingAccounts,
   } = useAccounts();
-  const refreshing = isLoadingTransactions;
-  const error = errors.transactions;
 
+  // Analytics hooks with proper typing
   const {
     analysis: spendingAnalysis,
-    updateTimeRange: updateSpendingTimeRange,
+    timeRange: spendingTimeRange,
+    loading: isLoadingSpending,
+    error: spendingError,
     calculate: calculateSpending,
+    updateTimeRange: updateSpendingTimeRange,
   } = useSpendingAnalysis();
 
   const {
     analysis: balanceAnalysis,
-    updateTimeRange: updateBalanceTimeRange,
+    timeRange: balanceTimeRange,
+    loading: isLoadingBalance,
+    error: balanceError,
     calculate: calculateBalance,
-    loading: isLoadingAnalysis,
+    updateTimeRange: updateBalanceTimeRange,
   } = useBalanceAnalysis();
 
   // Fetch bank accounts
   useEffect(() => {
-    const fetchBankAccounts = async () => {
-      console.log('🏦 Fetching bank accounts...');
+    const loadInitialData = async () => {
+      console.log('Loading initial data...');
       setIsLoadingBankAccounts(true);
+
       try {
+        // First load connections
+        await fetchAccounts();
+
+        if (!connections || connections.length === 0) {
+          console.log('No bank connections found');
+          setIsLoadingBankAccounts(false);
+          return;
+        }
+
+        // Then load balances
         const groupedBalances = await balanceRepository.getGroupedBalances();
-        console.log(`✅ Found ${groupedBalances.length} bank connections`);
 
         const accounts = groupedBalances.flatMap((group) =>
           group.accounts.map((account) => ({
@@ -98,30 +107,13 @@ export default function TrendsScreen() {
           }))
         );
 
-        console.log(
-          '🏦 Accounts:',
-          accounts.map((acc) => ({
-            account_name: acc.account_name,
-            connection_id: acc.connection_id,
-            account_type: acc.account_type,
-          }))
-        );
-
         setBankAccounts(accounts);
-      } catch (err) {
-        console.error('❌ Error fetching bank accounts:', err);
-      } finally {
-        setIsLoadingBankAccounts(false);
-      }
-    };
-    fetchBankAccounts();
-  }, []);
 
-  // Fetch initial transactions
-  useEffect(() => {
-    console.log('🔄 Fetching initial transactions...');
-    const fetchInitialTransactions = async () => {
-      try {
+        // Select all accounts by default
+        const accountIds = new Set(accounts.map((acc) => acc.connection_id));
+        setSelectedAccounts(accountIds);
+
+        // Finally fetch transactions
         const fromDate = new Date();
         fromDate.setDate(1); // Start of current month
         const toDate = new Date();
@@ -130,114 +122,59 @@ export default function TrendsScreen() {
           fromDate,
           toDate,
         });
-        console.log('✅ Initial transactions fetched');
       } catch (err) {
-        console.error('❌ Error fetching initial transactions:', err);
+        console.error('Error loading initial data:', err);
+        setBankAccounts([]);
+        setSelectedAccounts(new Set());
+      } finally {
+        setIsLoadingBankAccounts(false);
       }
     };
-    fetchInitialTransactions();
-  }, []); // Only run on mount
 
-  // Initialize selected accounts
-  useEffect(() => {
-    if (selectedAccounts.size === 0 && bankAccounts.length > 0) {
-      const newSelectedAccounts = new Set(bankAccounts.map((acc) => acc.connection_id));
-      console.log('🔄 Initializing selected accounts:', Array.from(newSelectedAccounts));
-      setSelectedAccounts(newSelectedAccounts);
+    // Only load initial data if we don't have accounts yet and have connections
+    if (!bankAccounts.length && connections?.length > 0) {
+      loadInitialData();
     }
-  }, [bankAccounts, selectedAccounts]);
+  }, [connections]); // Only depend on connections
 
-  // Filter and transform transactions
+  // Filter transactions based on selected accounts
   const filteredTransactions = useMemo(() => {
-    return (transactions || [])
-      .filter((t) => {
-        if (!t || !t.connection_id) {
-          console.log('Filtering out transaction:', {
-            reason: 'missing required fields',
-            transaction: t,
-          });
-          return false;
-        }
-        if (bankAccounts.length > 0 && !selectedAccounts.has(t.connection_id)) {
-          console.log('Filtering out transaction:', {
-            reason: 'account not selected',
-            transaction: t,
-          });
-          return false;
-        }
-        return true;
-      })
-      .map((t) => {
-        const transformedTransaction = {
-          ...t,
-          user_id: t.user_id || t.id,
-          connection_id: t.connection_id,
-          timestamp: t.timestamp,
-          type: t.transaction_type?.toLowerCase() === 'credit' ? 'credit' : 'debit',
-          created_at: t.created_at || t.timestamp,
-        };
-        return transformedTransaction;
-      });
-  }, [transactions, bankAccounts, selectedAccounts]);
+    return transactions
+      .filter((t) => t?.connection_id && selectedAccounts.has(t.connection_id))
+      .map((t) => ({
+        ...t,
+        user_id: t.user_id || t.id,
+        type: t.transaction_type?.toLowerCase() === 'credit' ? 'credit' : 'debit',
+        created_at: t.created_at || t.timestamp,
+      }));
+  }, [transactions, selectedAccounts]);
 
-  // Debug logging for filtered transactions
+  // Update analytics when filtered transactions or account balances change
   useEffect(() => {
-    if (filteredTransactions.length > 0) {
-      console.log('Filtered Transactions Sample:', {
-        count: filteredTransactions.length,
-        first: filteredTransactions[0],
-        last: filteredTransactions[filteredTransactions.length - 1],
-      });
-    } else {
-      console.log('No filtered transactions available');
+    if (filteredTransactions.length > 0 && bankAccounts.length > 0) {
+      const selectedAccountBalances = bankAccounts
+        .filter((acc) => selectedAccounts.has(acc.connection_id))
+        .map((acc) => ({
+          connection_id: acc.connection_id,
+          balance: acc.balance,
+        }));
+
+      calculateSpending(filteredTransactions);
+      calculateBalance(filteredTransactions, selectedAccountBalances);
     }
-  }, [filteredTransactions]);
-
-  // Update time range handlers
-  const handleSpendingTimeRangeChange = (newRange: 'week' | 'month') => {
-    setSpendingTimeRange(newRange);
-    updateSpendingTimeRange(newRange);
-  };
-
-  const handleBalanceTimeRangeChange = (type: 'Day' | 'Week' | 'Month' | 'Year') => {
-    setTimeRangeType(type);
-    // Convert the type to match the analytics slice format
-    const range = type.toLowerCase() as 'week' | 'month' | 'year';
-    updateBalanceTimeRange(range);
-  };
-
-  // Update useEffect to calculate analytics when transactions change
-  useEffect(() => {
-    if (transactions.length > 0) {
-      calculateSpending(transactions);
-      calculateBalance(
-        transactions,
-        bankAccounts
-          .filter((acc) => selectedAccounts.has(acc.connection_id))
-          .map((acc) => ({
-            connection_id: acc.connection_id,
-            balance: acc.balance,
-          }))
-      );
-    }
-  }, [transactions, bankAccounts, selectedAccounts, calculateSpending, calculateBalance]);
-
-  const timeRange = getTimeRange(timeRangeType);
+  }, [filteredTransactions, bankAccounts, selectedAccounts]);
 
   const toggleAccount = (connectionId: string) => {
-    console.log(`Toggling account with connection_id: ${connectionId}`);
     const newSelected = new Set(selectedAccounts);
     if (newSelected.has(connectionId)) {
-      console.log(`Removing account: ${connectionId}`);
       newSelected.delete(connectionId);
     } else {
-      console.log(`Adding account: ${connectionId}`);
       newSelected.add(connectionId);
     }
-    console.log('New selected accounts:', Array.from(newSelected));
     setSelectedAccounts(newSelected);
   };
 
+  // Render functions
   const renderAccountSelector = () => (
     <Modal
       visible={showAccountSelector}
@@ -250,144 +187,102 @@ export default function TrendsScreen() {
         activeOpacity={1}
         onPress={() => setShowAccountSelector(false)}
       >
-        <View style={styles.accountSelectorContainer}>
-          <View style={styles.accountSelectorHeader}>
-            <Text style={styles.accountSelectorTitle}>Select Accounts</Text>
-            <TouchableOpacity onPress={() => setShowAccountSelector(false)}>
-              <Ionicons name="close" size={24} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-          {bankAccounts.map((account) => (
-            <TouchableOpacity
-              key={account.id}
-              style={styles.accountItem}
-              onPress={() => toggleAccount(account.connection_id)}
-            >
-              <View style={styles.accountItemLeft}>
-                <Text style={styles.accountName}>{account.account_name}</Text>
-                <Text style={styles.accountType}>{account.account_type}</Text>
-              </View>
-              <View
-                style={[
-                  styles.checkbox,
-                  selectedAccounts.has(account.connection_id) && styles.checkboxSelected,
-                ]}
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Select Accounts</Text>
+          <ScrollView>
+            {bankAccounts.map((account) => (
+              <TouchableOpacity
+                key={account.connection_id}
+                style={styles.accountItem}
+                onPress={() => toggleAccount(account.connection_id)}
               >
-                {selectedAccounts.has(account.connection_id) && (
-                  <Ionicons name="checkmark" size={16} color="#FFF" />
-                )}
-              </View>
-            </TouchableOpacity>
-          ))}
+                <Text style={styles.accountName}>{account.account_name}</Text>
+                <View style={styles.checkbox}>
+                  {selectedAccounts.has(account.connection_id) && (
+                    <Ionicons name="checkmark" size={24} color={colors.primary} />
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
       </TouchableOpacity>
     </Modal>
   );
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <TouchableOpacity style={styles.headerLeft} onPress={() => setShowAccountSelector(true)}>
-        <Text style={styles.accountsText}>
-          {selectedAccounts.size} {selectedAccounts.size === 1 ? 'account' : 'accounts'}
-        </Text>
-        <Ionicons name="chevron-down" size={20} color={colors.text.secondary} />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.periodSelector}>
-        <Text style={styles.periodText}>This {timeRangeType.toLowerCase()}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const renderTabs = () => (
-    <View style={styles.tabContainer}>
-      {['Balance', 'Spending', 'Target'].map((tab) => (
-        <TouchableOpacity
-          key={tab}
-          style={[styles.tab, activeTab === tab && styles.activeTab]}
-          onPress={() => setActiveTab(tab as TabType)}
-        >
-          <Ionicons
-            name={
-              tab === 'Balance'
-                ? 'stats-chart-outline'
-                : tab === 'Spending'
-                  ? 'pie-chart-outline'
-                  : 'flag-outline'
-            }
-            size={20}
-            color={activeTab === tab ? colors.primary : colors.text.secondary}
-          />
-          <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
-  // Render functions
   const renderContent = () => {
-    if (error) {
+    // Only show loading if we're loading bank accounts or initial transactions
+    const isLoading =
+      isLoadingBankAccounts ||
+      (isLoadingTransactions?.transactions && !bankAccounts.length) ||
+      isLoadingAccounts;
+
+    if (isLoading) {
       return (
-        <View style={[styles.container, styles.centered]}>
-          <Text style={styles.errorText}>Error loading transactions</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => fetchTransactions({})}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       );
     }
 
-    // Check for no bank accounts first, but only after initial loading
-    if (!isLoadingBankAccounts && bankAccounts.length === 0) {
+    if (!connections || connections.length === 0) {
       return <NoBankPrompt />;
     }
 
-    // Then check loading states
-    if (isLoadingBankAccounts || (refreshing && !transactions.length)) {
-      return (
-        <View style={[styles.container, styles.centered]}>
-          <LoadingOverlay visible={true} message="Loading..." />
-          <Text style={styles.loadingText}>Loading your financial data...</Text>
-        </View>
-      );
+    switch (activeTab) {
+      case 'Balance':
+        return (
+          <BalanceView
+            data={balanceAnalysis}
+            timeRange={balanceTimeRange}
+            onTimeRangeChange={updateBalanceTimeRange}
+            loading={isLoadingBalance}
+            error={balanceError}
+          />
+        );
+      case 'Spending':
+        return (
+          <SpendingView
+            data={spendingAnalysis!}
+            timeRange={spendingTimeRange}
+            onTimeRangeChange={updateSpendingTimeRange}
+            transactions={filteredTransactions}
+            loading={isLoadingSpending}
+            error={spendingError}
+          />
+        );
+      case 'Target':
+        return <TargetView />;
+      default:
+        return null;
     }
-
-    if (!spendingAnalysis || !balanceAnalysis) {
-      return (
-        <View style={[styles.container, styles.centered]}>
-          <Text style={styles.error}>No transaction data available</Text>
-        </View>
-      );
-    }
-
-    return (
-      <>
-        <ScrollView style={styles.container}>
-          {renderHeader()}
-          {renderTabs()}
-          {activeTab === 'Balance' && (
-            <BalanceView
-              data={balanceAnalysis}
-              timeRange={timeRange}
-              onTimeRangeChange={handleBalanceTimeRangeChange}
-            />
-          )}
-          {activeTab === 'Spending' && (
-            <SpendingView
-              data={spendingAnalysis}
-              timeRange={spendingTimeRange}
-              onTimeRangeChange={handleSpendingTimeRangeChange}
-              transactions={filteredTransactions}
-            />
-          )}
-          {activeTab === 'Target' && <TargetView />}
-        </ScrollView>
-        {renderAccountSelector()}
-      </>
-    );
   };
 
-  // Final render
-  return renderContent();
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Trends</Text>
+        <TouchableOpacity onPress={() => setShowAccountSelector(true)}>
+          <Ionicons name="filter" size={24} color={colors.text.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.tabContainer}>
+        {(['Balance', 'Spending', 'Target'] as TabType[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.activeTab]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {renderAccountSelector()}
+      {renderContent()}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -395,35 +290,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  accountsText: {
+  title: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
-  },
-  periodSelector: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  periodText: {
-    color: '#FFF',
-    fontSize: 14,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -449,43 +325,23 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-  comingSoon: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  comingSoonText: {
-    color: colors.text.secondary,
-    fontSize: 16,
-  },
-  error: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-start',
   },
-  accountSelectorContainer: {
+  modalContent: {
     backgroundColor: '#0A1A2F',
     marginTop: 60,
     marginHorizontal: 16,
     borderRadius: 16,
     padding: 16,
   },
-  accountSelectorHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  accountSelectorTitle: {
+  modalTitle: {
     color: '#FFF',
     fontSize: 18,
     fontWeight: '600',
+    marginBottom: 16,
   },
   accountItem: {
     flexDirection: 'row',
@@ -495,19 +351,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
-  accountItemLeft: {
-    flex: 1,
-  },
   accountName: {
     color: '#FFF',
     fontSize: 16,
     fontWeight: '500',
-    marginBottom: 4,
-  },
-  accountType: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 12,
-    textTransform: 'uppercase',
   },
   checkbox: {
     width: 24,
@@ -515,35 +362,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.text.secondary,
-    marginLeft: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  errorText: {
-    color: colors.text.primary,
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: colors.primary,
-    padding: 12,
-    borderRadius: 8,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-  },
-  retryText: {
-    color: colors.text.inverse,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  loadingText: {
-    color: colors.text.primary,
-    fontSize: 16,
-    fontWeight: '500',
-    marginTop: 16,
   },
 });
