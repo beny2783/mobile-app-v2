@@ -13,14 +13,14 @@ import {
   Alert,
 } from 'react-native';
 import { colors } from '../constants/theme';
-import { DatabaseTransaction } from '../types/transaction';
+import type { Transaction } from '../types/transaction';
+import type { TransactionFilters } from '../repositories/types';
 import { useTransactions } from '../store/slices/transactions/hooks';
 import { useAccounts } from '../store/slices/accounts/hooks';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import type { AppTabParamList } from '../types/navigation/index';
 import CategorySelectionModal from '../components/modals/CategorySelectionModal';
-import type { TransactionFilters } from '../types/transaction';
 import { NoBankPrompt } from '../components/NoBankPrompt';
 
 // Add bank color mapping helper
@@ -75,7 +75,7 @@ export default function TransactionsScreen() {
   const route = useRoute<RouteProp<AppTabParamList, 'Transactions'>>();
 
   // Local UI state
-  const [editingTransaction, setEditingTransaction] = useState<DatabaseTransaction | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isCategoryModalVisible, setIsCategoryModalVisible] = useState(false);
   const [selectedTimePeriod, setSelectedTimePeriod] = useState<7 | 30 | 90>(30);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -159,7 +159,7 @@ export default function TransactionsScreen() {
     });
   }, [filteredTransactions, loading, errors, filters]);
 
-  const handleCategoryPress = (transaction: DatabaseTransaction) => {
+  const handleCategoryPress = (transaction: Transaction) => {
     setEditingTransaction(transaction);
     setIsCategoryModalVisible(true);
   };
@@ -169,7 +169,7 @@ export default function TransactionsScreen() {
 
     try {
       await updateCategory({
-        transactionId: editingTransaction.transaction_id || editingTransaction.id,
+        transactionId: editingTransaction.id,
         category: newCategory,
       });
 
@@ -368,7 +368,7 @@ export default function TransactionsScreen() {
     </View>
   );
 
-  const renderTransaction = ({ item }: { item: DatabaseTransaction }) => {
+  const renderTransaction = ({ item }: { item: Transaction }) => {
     const icon = getMerchantIcon(item.description, item.transaction_category);
 
     return (

@@ -259,7 +259,7 @@ export class SupabaseTransactionRepository implements TransactionRepository {
       const { data: transaction, error: fetchError } = await supabase
         .from('transactions')
         .select('*')
-        .eq('transaction_id', transactionId)
+        .eq('id', transactionId)
         .single();
 
       if (fetchError) {

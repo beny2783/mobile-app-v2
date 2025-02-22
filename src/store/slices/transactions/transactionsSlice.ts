@@ -303,10 +303,22 @@ const transactionsSlice = createSlice({
       // Update Transaction Category
       .addCase(updateTransactionCategory.fulfilled, (state, action) => {
         const { transactionId, category } = action.payload;
+
+        // First, find the transaction that was directly updated
         const transaction = state.transactions.entities[transactionId];
-        if (transaction) {
-          transaction.transaction_category = category;
-        }
+        if (!transaction) return;
+
+        // Get the merchant pattern to match other transactions
+        const merchantPattern = transaction.merchant_name || transaction.description;
+
+        // Update all transactions with matching merchant_name or description
+        Object.values(state.transactions.entities).forEach((t) => {
+          if (!t) return;
+          if (t.merchant_name === merchantPattern || t.description === merchantPattern) {
+            t.transaction_category = category;
+            t.transaction_type = category; // Also update transaction_type as it's used for categorization
+          }
+        });
       })
 
       // Pattern Detection
