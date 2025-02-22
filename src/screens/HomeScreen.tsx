@@ -8,9 +8,7 @@ import HomeHeader from '../components/HomeHeader';
 import SummaryCards from '../components/SummaryCards';
 import BankCard from '../components/BankCard';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { useAccounts } from '../hooks/useAccounts';
-import { useAppSelector } from '../store/hooks';
-import { selectTotalBalance } from '../store/slices/accountsSlice';
+import { useAccounts } from '../store/slices/accounts/hooks';
 import { colors } from '../constants/theme';
 import * as WebBrowser from 'expo-web-browser';
 import { useServices } from '../contexts/ServiceContext';
@@ -29,9 +27,8 @@ export default function HomeScreen() {
     connectionsError,
     loadConnections,
     loadAccountsByConnection,
+    totalBalance,
   } = useAccounts();
-
-  const totalBalance = useAppSelector(selectTotalBalance);
 
   // Load connections and their accounts on mount and when connections change
   useEffect(() => {

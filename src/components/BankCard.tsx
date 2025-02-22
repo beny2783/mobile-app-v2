@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useAccounts } from '../hooks/useAccounts';
+import { useAccounts } from '../store/slices/accounts/hooks';
 import { useAppSelector } from '../store/hooks';
 import { selectAccountsByConnection } from '../store/slices/accountsSlice';
 import { colors } from '../constants/theme';
 import AccountList from './AccountList';
 import { formatCurrency } from '../utils/formatters';
+import { BankConnection } from '../types/bank';
 
 interface BankCardProps {
   bankName: string;

@@ -5,7 +5,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../constants/theme';
 import { AppTabParamList } from '../types/navigation';
-import { useAccounts } from '../hooks/useAccounts';
+import { useAccounts } from '../store/slices/accounts/hooks';
 import * as WebBrowser from 'expo-web-browser';
 import { useAppDispatch } from '../store/hooks';
 import { getAuthUrl } from '../store/slices/trueLayerSlice';

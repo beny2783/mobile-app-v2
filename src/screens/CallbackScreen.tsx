@@ -1,9 +1,13 @@
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import type { AppTabParamList } from '../types/navigation';
+import { colors } from '../constants/theme';
+import { useAccounts } from '../store/slices/accounts/hooks';
 import { getTrueLayerService } from '../services/trueLayer';
 import { TRUELAYER } from '../constants';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { AppTabParamList } from '../types/navigation';
 import { useAppDispatch } from '../store/hooks';
 import { fetchConnections } from '../store/slices/accountsSlice';
 

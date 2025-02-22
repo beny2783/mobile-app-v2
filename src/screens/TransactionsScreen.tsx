@@ -15,12 +15,13 @@ import {
 import { colors } from '../constants/theme';
 import { DatabaseTransaction } from '../types/transaction';
 import { useTransactions } from '../store/slices/transactions/hooks';
-import { useAccounts } from '../hooks/useAccounts';
+import { useAccounts } from '../store/slices/accounts/hooks';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import type { AppTabParamList } from '../types/navigation/index';
 import CategorySelectionModal from '../components/modals/CategorySelectionModal';
 import type { TransactionFilters } from '../types/transaction';
+import { NoBankPrompt } from '../components/NoBankPrompt';
 
 // Add bank color mapping helper
 const getBankColor = (bankId: string) => {
@@ -92,6 +93,7 @@ export default function TransactionsScreen() {
     updateFilters,
     reset,
     refreshCategories,
+    hasConnections,
   } = useTransactions();
 
   const { connections } = useAccounts();

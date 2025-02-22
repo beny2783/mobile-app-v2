@@ -11,7 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
 import { useTransactions } from '../store/slices/transactions/hooks';
-import { useAccounts } from '../hooks/useAccounts';
+import { useAccounts } from '../store/slices/accounts/hooks';
 import { useSpendingAnalysis } from '../store/slices/analytics/hooks';
 import { useBalanceAnalysis } from '../store/slices/analytics/hooks';
 import { SpendingView } from '../components/SpendingView';
@@ -23,9 +23,11 @@ import { DatabaseBankAccount } from '../types/bank/database';
 import type { TimeRange } from '../types/bank/analysis';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import LoadingOverlay from '../components/LoadingOverlay';
-import type { Transaction } from '../types/transaction';
-import type { DatabaseTransaction } from '../types/transaction/index';
+import type { Transaction } from '../types/transaction/index';
+import type { DatabaseTransaction } from '../types/transaction';
 import type { BaseTransaction } from '../types/transaction/index';
+import { NoBankPrompt } from '../components/NoBankPrompt';
+import { TimeRangeSelector } from '../components/TimeRangeSelector';
 
 type TabType = 'Balance' | 'Spending' | 'Target';
 
@@ -334,7 +336,13 @@ export default function TrendsScreen() {
       );
     }
 
-    if ((refreshing && !transactions.length) || isLoadingBankAccounts) {
+    // Check for no bank accounts first, but only after initial loading
+    if (!isLoadingBankAccounts && bankAccounts.length === 0) {
+      return <NoBankPrompt />;
+    }
+
+    // Then check loading states
+    if (isLoadingBankAccounts || (refreshing && !transactions.length)) {
       return (
         <View style={[styles.container, styles.centered]}>
           <LoadingOverlay visible={true} message="Loading..." />

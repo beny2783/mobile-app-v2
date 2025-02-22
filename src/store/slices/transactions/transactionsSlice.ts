@@ -23,6 +23,8 @@ import { Transaction } from '../../../types/transaction';
 import { createTransactionRepository } from '../../../repositories/transaction';
 import { getTrueLayerApiService } from '../trueLayerSlice';
 import { escapeRegExp } from '../../../utils/stringUtils';
+import { selectConnections } from '../accountsSlice';
+import type { BankConnection } from '../../../types/bank/connection';
 
 // Create entity adapter
 const transactionsAdapter = createEntityAdapter<Transaction, string>({
@@ -69,6 +71,14 @@ const initialState: TransactionState = {
 export const fetchTransactions = createAsyncThunk(
   'transactions/fetchTransactions',
   async (payload: FetchTransactionsPayload, { getState, dispatch }) => {
+    const state = getState() as RootState;
+    const connections = selectConnections(state);
+
+    // If no connections, return empty array
+    if (!connections || connections.length === 0) {
+      return [];
+    }
+
     const repository = createTransactionRepository(getTrueLayerApiService());
     const transactions = await repository.getTransactions(payload.filters);
     return transactions;

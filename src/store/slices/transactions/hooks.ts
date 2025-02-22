@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useAppDispatch, useAppSelector } from '../../hooks';
+import { selectConnections } from '../accountsSlice';
 import {
   selectAllTransactions,
   selectTransactionById,
@@ -27,9 +28,11 @@ import type {
   SyncTransactionsPayload,
 } from './types';
 import type { TransactionFilters } from '../../../types/transaction';
+import type { BankConnection } from '../../../types/bank/connection';
 
 export const useTransactions = () => {
   const dispatch = useAppDispatch();
+  const connections = useAppSelector(selectConnections);
   const allTransactions = useAppSelector(selectAllTransactions);
   const filteredTransactions = useAppSelector(selectFilteredTransactions);
   const transactionGroups = useAppSelector(selectTransactionGroups);
@@ -43,9 +46,11 @@ export const useTransactions = () => {
 
   const fetch = useCallback(
     (filters: TransactionFilters) => {
-      dispatch(fetchTransactions({ filters }));
+      if (connections && connections.length > 0) {
+        dispatch(fetchTransactions({ filters }));
+      }
     },
-    [dispatch]
+    [dispatch, connections]
   );
 
   const sync = useCallback(
@@ -97,6 +102,7 @@ export const useTransactions = () => {
     errors,
     categories,
     merchantCategories,
+    hasConnections: connections && connections.length > 0,
 
     // Actions
     fetch,
