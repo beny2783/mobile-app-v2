@@ -9,6 +9,183 @@
 3. No centralized state management
 4. Scattered business logic
 
+## Redux Implementation Guide
+
+### Store Architecture
+
+The global store is organized into feature-based slices, each managing a specific domain of the application:
+
+```typescript
+// Core slices
+- auth: Authentication and user state
+- ui: Global UI state (loading, errors, modals)
+- app: App-wide configuration and settings
+
+// Feature slices
+- accounts: Bank account connections and balances
+- transactions: Transaction history and operations
+- budget: Budget tracking and management
+- analytics: Financial insights and analysis
+```
+
+### Action Patterns
+
+1. **Domain-Specific Actions**
+
+```typescript
+// Auth actions
+auth / login / pending;
+auth / login / fulfilled;
+auth / login / rejected;
+auth / logout;
+auth / updateProfile;
+
+// Transaction actions
+transactions / fetch / pending;
+transactions / fetch / fulfilled;
+transactions / fetch / rejected;
+transactions / updateCategory;
+transactions / setFilters;
+```
+
+2. **Action Creator Patterns**
+
+```typescript
+// Simple action
+export const setFilter = createAction('transactions/setFilter')<FilterType>();
+
+// Complex action with preparation
+export const updateTransaction = createAction(
+  'transactions/update',
+  (transaction: Transaction, updates: Partial<Transaction>) => ({
+    payload: {
+      id: transaction.id,
+      changes: updates,
+      timestamp: new Date().toISOString(),
+    },
+  })
+);
+
+// Async thunk action
+export const fetchTransactions = createAsyncThunk(
+  'transactions/fetch',
+  async (filters: TransactionFilters, { rejectWithValue }) => {
+    try {
+      const response = await api.fetchTransactions(filters);
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response.data);
+    }
+  }
+);
+```
+
+### Reducer Patterns
+
+1. **Feature Slice Structure**
+
+```typescript
+// transactions/slice.ts
+const transactionsSlice = createSlice({
+  name: 'transactions',
+  initialState,
+  reducers: {
+    // Synchronous state updates
+    setFilter: (state, action: PayloadAction<FilterType>) => {
+      state.filters = action.payload;
+    },
+    resetFilters: (state) => {
+      state.filters = initialState.filters;
+    },
+  },
+  extraReducers: (builder) => {
+    // Async operation state handling
+    builder
+      .addCase(fetchTransactions.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchTransactions.fulfilled, (state, action) => {
+        state.loading = false;
+        state.data = action.payload;
+      })
+      .addCase(fetchTransactions.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      });
+  },
+});
+```
+
+2. **State Normalization**
+
+```typescript
+// Using createEntityAdapter for collections
+const transactionsAdapter = createEntityAdapter<Transaction>({
+  selectId: (transaction) => transaction.id,
+  sortComparer: (a, b) => b.timestamp.localeCompare(a.timestamp),
+});
+
+const initialState = transactionsAdapter.getInitialState({
+  loading: false,
+  error: null,
+  filters: defaultFilters,
+});
+```
+
+3. **Common State Patterns**
+
+```typescript
+interface FeatureState<T> {
+  // Entity data
+  entities: Record<string, T>;
+  ids: string[];
+
+  // UI state
+  loading: {
+    fetch: boolean;
+    update: boolean;
+    delete: boolean;
+  };
+  error: {
+    fetch: string | null;
+    update: string | null;
+    delete: string | null;
+  };
+
+  // Feature-specific state
+  filters: FilterType;
+  selectedId: string | null;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+  };
+}
+```
+
+### Usage Guidelines
+
+1. **When to Use Redux**
+
+   - Global state that affects multiple components
+   - Complex data that requires normalization
+   - State that needs to persist across navigation
+   - Data that requires caching or offline access
+
+2. **When to Use Local State**
+
+   - Form state (unless complex forms with global impact)
+   - UI animations and transitions
+   - Component-specific toggles and flags
+   - Temporary data that doesn't affect other components
+
+3. **Performance Considerations**
+   - Use memoized selectors for derived data
+   - Normalize state to prevent duplication
+   - Batch related actions when possible
+   - Use RTK Query for API caching
+
 ## Migration Plan
 
 ### 1. Setup Redux Toolkit Infrastructure ✅
@@ -256,10 +433,13 @@ useEffect(() => {
 - **Replaced**:
   - `src/contexts/ServiceContext.tsx` (partially) ✅
   - `src/hooks/useBankConnections.ts` ✅
+  - `src/hooks/useAccounts.ts` ✅
   - Account-related state in:
     - `src/screens/ConnectBankScreen.tsx` ✅
     - `src/components/AccountList.tsx` ✅
     - `src/components/AccountCard.tsx` ✅
+    - `src/components/BankCard.tsx` ✅
+    - `src/components/NoBankPrompt.tsx` ✅
 
 **Implementation Details**:
 
@@ -268,7 +448,8 @@ useEffect(() => {
 - Async thunks for API integration ✅
 - Loading and error states ✅
 - TrueLayer service integration ✅
-- Comprehensive test coverage 🔄
+- Comprehensive test coverage ✅
+- Account hooks migration to Redux slice ✅
 
 ### 3. TrueLayer Service
 
@@ -345,7 +526,7 @@ useEffect(() => {
 ### Phase 1: Context API Removal
 
 - [x] `src/contexts/BudgetContext.tsx`
-- [ ] `src/contexts/TransactionContext.tsx`
+- [x] `src/contexts/TransactionContext.tsx`
 - [x] `src/contexts/ServiceContext.tsx` (TrueLayer portion)
 - [ ] `src/contexts/SubscriptionContext.tsx`
 
@@ -353,7 +534,8 @@ useEffect(() => {
 
 - [x] `src/hooks/useTargets.ts`
 - [x] `src/hooks/useBankConnections.ts`
-- [ ] `src/hooks/useTransactions.ts`
+- [x] `src/hooks/useAccounts.ts`
+- [x] `src/hooks/useTransactions.ts`
 - [ ] Refactor remaining hooks to use Redux
 
 ### Migration Progress Tracking
@@ -405,18 +587,19 @@ Track the following metrics during migration:
 
 - `src/hooks/useTransactions.ts` ✅ -> Migrated to `store/slices/transactions/hooks.ts`
 - `src/hooks/useTargets.ts` ✅ -> Migrated to `store/slices/budget/hooks.ts`
+- `src/hooks/useAccounts.ts` ✅ -> Migrated to `store/slices/accounts/hooks.ts`
 
 ### Pending Hook Migrations 🔄
 
-1. **useAccounts.ts**
+1. ~~**useAccounts.ts**~~ ✅ COMPLETED
 
-   - Current: Local hook managing bank account state
-   - Target: Move to `store/slices/accounts/hooks.ts`
-   - Dependencies: TrueLayer service integration
-   - Components to update:
-     - AccountList
-     - TransactionsScreen
-     - TrendsScreen
+   - Migrated to: `store/slices/accounts/hooks.ts`
+   - All dependent components updated:
+     - AccountList ✅
+     - TransactionsScreen ✅
+     - TrendsScreen ✅
+     - BankCard ✅
+     - NoBankPrompt ✅
 
 2. **useSpendingAnalysis.ts**
 
@@ -465,9 +648,9 @@ Track the following metrics during migration:
 ### Next Steps
 
 1. Create analytics slice for spending and balance analysis
-2. Complete accounts slice implementation
-3. Migrate remaining hooks one by one
-4. Update affected components
+2. ~~Complete accounts slice implementation~~ ✅ COMPLETED
+3. ~~Migrate remaining hooks one by one~~ ✅ COMPLETED for accounts
+4. ~~Update affected components~~ ✅ COMPLETED for accounts
 5. Add tests for new implementations
 6. Remove old hook files
 7. Update import paths across the application

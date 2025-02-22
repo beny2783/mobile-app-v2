@@ -1,11 +1,6 @@
 import { EntityState } from '@reduxjs/toolkit';
-import {
-  BaseTransaction,
-  DatabaseTransaction,
-  Transaction,
-  TransactionFilters,
-  MerchantCategory,
-} from '../../../types/transaction';
+import type { Transaction } from '../../../types/transaction';
+import type { TransactionFilters, MerchantCategory } from '../../../repositories/types';
 
 export interface TransactionPattern {
   pattern: RegExp;

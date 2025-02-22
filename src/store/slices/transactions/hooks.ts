@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { selectConnections } from '../accountsSlice';
 import {
@@ -13,6 +13,8 @@ import {
   selectTransactionGroups,
   selectTransactionStats,
   selectTransactionPatterns,
+  selectTransactionPatternsLoading,
+  selectTransactionPatternsError,
   fetchTransactions,
   syncTransactions,
   fetchCategories,
@@ -132,5 +134,26 @@ export const useTransaction = (id: string) => {
   return {
     transaction,
     updateCategory,
+  };
+};
+
+export const useTransactionPatterns = () => {
+  const dispatch = useAppDispatch();
+  const patterns = useAppSelector(selectTransactionPatterns);
+  const loading = useAppSelector(selectTransactionPatternsLoading);
+  const error = useAppSelector(selectTransactionPatternsError);
+  const transactions = useAppSelector(selectAllTransactions);
+
+  useEffect(() => {
+    if (transactions.length > 0) {
+      dispatch(detectTransactionPatterns());
+    }
+  }, [transactions, dispatch]);
+
+  return {
+    patterns,
+    loading,
+    error,
+    refresh: () => dispatch(detectTransactionPatterns()),
   };
 };

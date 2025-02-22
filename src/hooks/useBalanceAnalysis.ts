@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import { DatabaseTransaction } from '../types/transaction';
+import type { Transaction } from '../types/transaction';
 import { TimeRange, BalanceAnalysisData } from '../types/bank/analysis';
 import { BalancePoint } from '../types/bank/balance';
 import { getTimeRange, formatDate } from '../utils/balanceUtils';
-import { useTransactionPatterns } from './useTransactionPatterns';
+import { useTransactionPatterns } from '../store/slices/transactions/hooks';
 
 interface AccountBalance {
   connection_id: string;
@@ -15,12 +15,13 @@ interface ExtendedBalancePoint extends BalancePoint {
 }
 
 export const useBalanceAnalysis = (
-  transactions: DatabaseTransaction[],
+  transactions: Transaction[],
   timeRangeType: TimeRange['type'] = 'Month',
   accountBalances: AccountBalance[] = []
 ): BalanceAnalysisData | null => {
+  const { patterns } = useTransactionPatterns();
   const { recurringTransactions, recurringPayments, scheduledTransactions, seasonalPatterns } =
-    useTransactionPatterns(transactions);
+    patterns;
 
   return useMemo(() => {
     if (!transactions.length) return null;

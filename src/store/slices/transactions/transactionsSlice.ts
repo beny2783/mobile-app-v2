@@ -18,8 +18,10 @@ import {
   TransactionSelectionCriteria,
   TransactionPatterns,
   TransactionPattern,
+  SeasonalPattern,
+  ScheduledTransaction,
 } from './types';
-import { Transaction } from '../../../types/transaction';
+import type { Transaction, DatabaseTransaction, BaseTransaction } from '../../../types/transaction';
 import { createTransactionRepository } from '../../../repositories/transaction';
 import { getTrueLayerApiService } from '../trueLayerSlice';
 import { escapeRegExp } from '../../../utils/stringUtils';
@@ -135,16 +137,7 @@ export const detectTransactionPatterns = createAsyncThunk(
   'transactions/detectPatterns',
   async (_, { getState }) => {
     const state = getState() as RootState;
-    const transactions = selectAllTransactions(state);
-
-    if (!transactions.length) {
-      return {
-        recurringTransactions: [],
-        recurringPayments: [],
-        scheduledTransactions: [],
-        seasonalPatterns: [],
-      };
-    }
+    const transactions = selectAllTransactions(state) as DatabaseTransaction[]; // Cast to DatabaseTransaction for scheduled_date access
 
     // Group transactions by description
     const transactionGroups = new Map<string, Transaction[]>();
@@ -164,7 +157,7 @@ export const detectTransactionPatterns = createAsyncThunk(
 
     // Analyze each group for patterns
     transactionGroups.forEach((group, description) => {
-      if (group.length < 2) return; // Need at least 2 transactions to identify a pattern
+      if (group.length < 2) return;
 
       // Sort by date
       const sortedGroup = [...group].sort(
@@ -460,5 +453,9 @@ export const selectTransactionStats = createSelector(
 );
 
 export const selectTransactionPatterns = (state: RootState) => state.transactions.patterns;
+export const selectTransactionPatternsLoading = (state: RootState) =>
+  state.transactions.loading.patterns;
+export const selectTransactionPatternsError = (state: RootState) =>
+  state.transactions.errors.patterns;
 
 export default transactionsSlice.reducer;

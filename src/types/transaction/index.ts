@@ -42,7 +42,7 @@ export type {
   SeasonalPattern,
   ScheduledTransaction,
   TransactionPatterns,
-} from '../../hooks/useTransactionPatterns';
+} from '../../store/slices/transactions/types';
 
 // Re-export insights
 export * from './insights';
