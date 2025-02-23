@@ -22,6 +22,8 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import type { AppTabParamList } from '../types/navigation/index';
 import CategorySelectionModal from '../components/modals/CategorySelectionModal';
 import { NoBankPrompt } from '../components/NoBankPrompt';
+import { useBudget } from '../store/slices/budget/hooks';
+import { useAuth } from '../store/slices/auth/hooks';
 
 // Add bank color mapping helper
 const getBankColor = (bankId: string) => {
@@ -97,6 +99,8 @@ export default function TransactionsScreen() {
   } = useTransactions();
 
   const { connections } = useAccounts();
+  const { fetchTargets } = useBudget();
+  const { user } = useAuth();
 
   // Convert filters to match TransactionFilters type
   const handleFetch = (currentFilters: typeof filters) => {
@@ -168,13 +172,27 @@ export default function TransactionsScreen() {
     if (!editingTransaction) return;
 
     try {
+      // Update the transaction category
       await updateCategory({
         transactionId: editingTransaction.id,
         category: newCategory,
       });
 
+      // Close the modal first
       setIsCategoryModalVisible(false);
       setEditingTransaction(null);
+
+      // Add a small delay to ensure the database trigger has completed
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Refresh transactions first to get the updated categories
+      await handleFetch(filters);
+
+      // Then refresh budget data to get the updated amounts
+      if (user) {
+        await fetchTargets(user.id);
+      }
+
       Alert.alert('Success', 'Transaction category updated successfully');
     } catch (error) {
       console.error('Failed to update category:', error);
