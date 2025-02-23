@@ -399,6 +399,11 @@ export default function TransactionsScreen() {
     );
   }
 
+  // Show NoBankPrompt if there are no bank connections
+  if (!hasConnections) {
+    return <NoBankPrompt />;
+  }
+
   return (
     <View style={styles.container}>
       {renderSearchBar()}

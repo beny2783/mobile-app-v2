@@ -51,6 +51,7 @@ export default function TrendsScreen() {
     loading: isLoadingTransactions,
     errors,
     fetch: fetchTransactions,
+    hasConnections,
   } = useTransactions();
 
   const {
@@ -225,7 +226,7 @@ export default function TrendsScreen() {
       );
     }
 
-    if (!connections || connections.length === 0) {
+    if (!hasConnections) {
       return <NoBankPrompt />;
     }
 
