@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { DatabaseTransaction } from '../../../types/transaction';
 import type { TrueLayerBalance } from '../../../types/bank/balance';
+import { authRepository } from '../../../repositories/auth';
 
 export class TrueLayerStorageService implements ITrueLayerStorageService {
   private encryption: EncryptionService;
@@ -278,32 +279,38 @@ export class TrueLayerStorageService implements ITrueLayerStorageService {
     try {
       console.log('🔌 TrueLayerStorage: Disconnecting bank connection:', connectionId);
 
-      const updates = [
-        supabase
-          .from('bank_connections')
-          .update({
-            status: 'disconnected',
-            disconnected_at: new Date().toISOString(),
-            encrypted_access_token: null,
-            encrypted_refresh_token: null,
-          })
-          .eq('id', connectionId),
-        supabase.from('bank_accounts').delete().eq('connection_id', connectionId),
-        supabase.from('balances').delete().eq('connection_id', connectionId),
-      ];
+      const user = await authRepository.getUser();
+      if (!user) {
+        throw new TrueLayerError('User not authenticated', TrueLayerErrorCode.UNAUTHORIZED);
+      }
 
-      console.log('🔌 TrueLayerStorage: Executing disconnect operations...');
-      const results = await Promise.all(updates);
-      const errors = results.filter((result) => result.error);
+      const { data, error } = await supabase.rpc('disconnect_bank', {
+        p_connection_id: connectionId,
+        p_user_id: user.id,
+      });
 
-      if (errors.length > 0) {
-        console.error('❌ TrueLayerStorage: Disconnect failed:', errors[0].error);
+      if (error) {
+        console.error('❌ TrueLayerStorage: Disconnect failed:', error);
         throw new TrueLayerError(
           'Failed to disconnect bank',
           TrueLayerErrorCode.STORAGE_FAILED,
           undefined,
-          errors[0].error
+          error
         );
+      }
+
+      // Log the deletion results
+      if (data) {
+        console.log('📊 Initial record counts:', data.counts.initial_counts);
+        console.log('📊 Final record counts:', data.counts.final_counts);
+
+        // Verify all counts are zero
+        const finalCounts = data.counts.final_counts;
+        const allZero = Object.values(finalCounts).every((count) => count === 0);
+
+        if (!allZero) {
+          console.error('⚠️ Warning: Not all records were deleted:', finalCounts);
+        }
       }
 
       console.log('✅ TrueLayerStorage: Bank disconnected successfully');

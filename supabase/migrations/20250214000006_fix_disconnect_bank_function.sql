@@ -1,50 +1,70 @@
--- Drop the existing function
+-- Drop the existing function if it exists
 DROP FUNCTION IF EXISTS public.disconnect_bank(uuid, uuid);
 
--- Create the updated function
+-- Create the new function
 CREATE OR REPLACE FUNCTION public.disconnect_bank(p_connection_id uuid, p_user_id uuid)
-RETURNS void
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
-begin
-  -- First verify the connection exists and belongs to the user
-  if not exists (
-    select 1
-    from bank_connections
-    where id = p_connection_id
-    and user_id = p_user_id
-  ) then
-    raise exception 'Bank connection not found or unauthorized';
-  end if;
+DECLARE
+    v_initial_counts jsonb;
+    v_final_counts jsonb;
+    v_connection_exists boolean;
+BEGIN
+    -- Check if connection exists and is active
+    SELECT EXISTS (
+        SELECT 1
+        FROM bank_connections
+        WHERE id = p_connection_id
+        AND user_id = p_user_id
+        AND status = 'active'
+    ) INTO v_connection_exists;
 
-  -- Update connection status
-  update bank_connections
-  set status = 'disconnected',
-      disconnected_at = now(),
-      encrypted_access_token = null,  -- Clear tokens
-      encrypted_refresh_token = null
-  where id = p_connection_id
-  and user_id = p_user_id;
+    IF NOT v_connection_exists THEN
+        RAISE EXCEPTION 'Bank connection not found or unauthorized';
+    END IF;
 
-  -- Delete associated transactions for this specific connection
-  delete from transactions
-  where user_id = p_user_id
-  and connection_id = p_connection_id;
+    -- Get initial counts
+    SELECT jsonb_build_object(
+        'initial_counts', jsonb_build_object(
+            'bank_accounts', (SELECT COUNT(*) FROM bank_accounts WHERE connection_id = p_connection_id),
+            'balances', (SELECT COUNT(*) FROM balances WHERE connection_id = p_connection_id),
+            'transactions', (SELECT COUNT(*) FROM transactions WHERE connection_id = p_connection_id)
+        )
+    ) INTO v_initial_counts;
 
-  -- Delete associated balances for this specific connection
-  delete from balances
-  where user_id = p_user_id
-  and connection_id = p_connection_id;
+    -- Delete associated records first
+    DELETE FROM transactions WHERE connection_id = p_connection_id AND user_id = p_user_id;
+    DELETE FROM balances WHERE connection_id = p_connection_id AND user_id = p_user_id;
+    DELETE FROM bank_accounts WHERE connection_id = p_connection_id AND user_id = p_user_id;
 
-  -- Delete associated bank accounts for this specific connection
-  delete from bank_accounts
-  where user_id = p_user_id
-  and connection_id = p_connection_id;
+    -- Update the connection status
+    UPDATE bank_connections
+    SET status = 'disconnected',
+        disconnected_at = now(),
+        encrypted_access_token = null,
+        encrypted_refresh_token = null
+    WHERE id = p_connection_id
+    AND user_id = p_user_id
+    AND status = 'active';
 
-  -- Commit the transaction
-  commit;
-end;
+    -- Get final counts
+    SELECT jsonb_build_object(
+        'final_counts', jsonb_build_object(
+            'bank_accounts', (SELECT COUNT(*) FROM bank_accounts WHERE connection_id = p_connection_id),
+            'balances', (SELECT COUNT(*) FROM balances WHERE connection_id = p_connection_id),
+            'transactions', (SELECT COUNT(*) FROM transactions WHERE connection_id = p_connection_id)
+        )
+    ) INTO v_final_counts;
+
+    -- Return all information
+    RETURN jsonb_build_object(
+        'success', true,
+        'connection_id', p_connection_id,
+        'counts', v_initial_counts || v_final_counts
+    );
+END;
 $$;
 
 -- Grant execute permissions
