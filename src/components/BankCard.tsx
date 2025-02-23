@@ -53,7 +53,9 @@ export default function BankCard({ bankName, connectionId }: BankCardProps) {
       {isExpanded && (
         <View style={styles.content}>
           {accountsLoading ? (
-            <Text style={styles.loadingText}>Loading accounts...</Text>
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Loading accounts...</Text>
+            </View>
           ) : (
             <AccountList accounts={accounts} />
           )}
@@ -66,6 +68,17 @@ export default function BankCard({ bankName, connectionId }: BankCardProps) {
 const styles = StyleSheet.create({
   container: {
     margin: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   header: {
     flexDirection: 'row',
@@ -73,29 +86,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flex: 1,
   },
   bankName: {
     color: colors.text.primary,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   balance: {
     color: colors.text.primary,
-    fontWeight: '600',
+    fontSize: 32,
+    fontWeight: '700',
   },
   optionsButton: {
-    padding: 8,
+    padding: 12,
+    marginLeft: 16,
   },
   optionsText: {
     color: colors.text.primary,
+    fontSize: 24,
     fontWeight: '600',
   },
   content: {
     marginTop: 16,
   },
-  loadingText: {
+  loadingContainer: {
     padding: 16,
     alignItems: 'center',
+  },
+  loadingText: {
+    color: colors.text.secondary,
+    fontSize: 16,
   },
 });

@@ -42,42 +42,39 @@ export default function AccountList({ accounts }: AccountListProps) {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 16,
+    marginTop: 8,
   },
   accountItem: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 8,
     padding: 16,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 12,
   },
   accountHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   accountInfo: {
     flex: 1,
   },
   accountName: {
     color: colors.text.primary,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
+    marginBottom: 4,
   },
   accountType: {
     color: colors.text.secondary,
     fontSize: 14,
-    marginTop: 2,
+    textTransform: 'capitalize',
   },
   balanceContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 16,
+    marginTop: 8,
   },
   balanceItem: {
-    flex: 1,
+    marginBottom: 8,
   },
   balanceLabel: {
     color: colors.text.secondary,
@@ -86,11 +83,13 @@ const styles = StyleSheet.create({
   },
   balance: {
     color: colors.text.primary,
-    fontSize: 16,
+    fontSize: 24,
     fontWeight: '600',
   },
   updated: {
     color: colors.text.secondary,
     fontSize: 12,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });
