@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -79,8 +79,9 @@ export default function TransactionsScreen() {
   // Local UI state
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isCategoryModalVisible, setIsCategoryModalVisible] = useState(false);
-  const [selectedTimePeriod, setSelectedTimePeriod] = useState<7 | 30 | 90>(30);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [page, setPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
   // Redux hooks
   const {
@@ -96,6 +97,7 @@ export default function TransactionsScreen() {
     reset,
     refreshCategories,
     hasConnections,
+    allTransactions,
   } = useTransactions();
 
   const { connections } = useAccounts();
@@ -104,6 +106,8 @@ export default function TransactionsScreen() {
 
   // Convert filters to match TransactionFilters type
   const handleFetch = (currentFilters: typeof filters) => {
+    console.log('🔄 handleFetch called with filters:', currentFilters);
+
     const transactionFilters: TransactionFilters = {
       fromDate: new Date(currentFilters.dateRange.from),
       toDate: new Date(currentFilters.dateRange.to),
@@ -111,6 +115,8 @@ export default function TransactionsScreen() {
       connectionId: currentFilters.bankId || undefined,
       searchQuery: currentFilters.searchQuery || undefined,
     };
+
+    console.log('🔄 Fetching transactions with processed filters:', transactionFilters);
     fetch(transactionFilters);
   };
 
@@ -118,7 +124,17 @@ export default function TransactionsScreen() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        await Promise.all([refreshCategories(), handleFetch(filters)]);
+        // Fetch all transactions without any date filters
+        const initialFilters = {
+          ...filters,
+          dateRange: {
+            from: new Date(0).toISOString(), // Start from Unix epoch
+            to: new Date().toISOString(), // Up to now
+          },
+        };
+
+        console.log('🔄 Loading initial data with no date filters:', initialFilters);
+        await Promise.all([refreshCategories(), handleFetch(initialFilters)]);
       } catch (error) {
         console.error('Failed to load initial data:', error);
       } finally {
@@ -138,30 +154,50 @@ export default function TransactionsScreen() {
   // Handle refresh parameter from navigation
   useEffect(() => {
     const params = route.params as { refresh?: boolean } | undefined;
-    console.log('🔄 TransactionsScreen: Navigation params received:', {
-      params,
-      shouldRefresh: params?.refresh,
-    });
-
     if (params?.refresh) {
       console.log('🔄 Refreshing transactions from navigation param');
       handleFetch(filters);
     }
   }, [route.params?.refresh, fetch, filters]);
 
-  // Log state changes
-  useEffect(() => {
-    console.log('📊 TransactionsScreen: Data state updated:', {
-      transactionCount: filteredTransactions.length,
-      loading,
-      errors,
-      hasFilters: {
-        category: filters.category !== null,
-        bank: filters.bankId !== null,
-        search: filters.searchQuery !== '',
-      },
+  const handleLoadMore = () => {
+    console.log('📜 Loading more transactions, current page:', page);
+    setPage((prevPage) => prevPage + 1);
+  };
+
+  // Get paginated transactions
+  const paginatedTransactions = useMemo(() => {
+    return filteredTransactions.slice(0, page * ITEMS_PER_PAGE);
+  }, [filteredTransactions, page]);
+
+  // Create paginated groups
+  const paginatedGroups = useMemo(() => {
+    const groups = new Map<string, Transaction[]>();
+
+    paginatedTransactions.forEach((transaction) => {
+      const date = new Date(transaction.timestamp).toLocaleDateString();
+      const group = groups.get(date) || [];
+      group.push(transaction);
+      groups.set(date, group);
     });
-  }, [filteredTransactions, loading, errors, filters]);
+
+    return Array.from(groups.entries()).map(([date, transactions]) => ({
+      title: date,
+      data: transactions,
+      totalAmount: transactions.reduce((sum, t) => sum + t.amount, 0),
+      bankTotals: transactions.reduce(
+        (totals, t) => {
+          const bankId = t.connection_id;
+          if (!totals[bankId]) {
+            totals[bankId] = { amount: 0, name: t.merchant_name || 'Unknown' };
+          }
+          totals[bankId].amount += t.amount;
+          return totals;
+        },
+        {} as { [key: string]: { amount: number; name: string } }
+      ),
+    }));
+  }, [paginatedTransactions]);
 
   const handleCategoryPress = (transaction: Transaction) => {
     setEditingTransaction(transaction);
@@ -200,16 +236,6 @@ export default function TransactionsScreen() {
     }
   };
 
-  const handleTimePeriodChange = (days: 7 | 30 | 90) => {
-    setSelectedTimePeriod(days);
-    updateFilters({
-      dateRange: {
-        from: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
-        to: new Date().toISOString(),
-      },
-    });
-  };
-
   const renderSearchBar = () => (
     <View style={styles.searchContainer}>
       <TextInput
@@ -218,61 +244,6 @@ export default function TransactionsScreen() {
         value={filters.searchQuery}
         onChangeText={(text) => updateFilters({ searchQuery: text })}
       />
-    </View>
-  );
-
-  const renderDateFilter = () => (
-    <View style={styles.dateFilterContainer}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <TouchableOpacity
-          style={[
-            styles.dateFilterButton,
-            styles.timeRangeButton,
-            selectedTimePeriod === 7 && styles.timeRangeButtonActive,
-          ]}
-          onPress={() => handleTimePeriodChange(7)}
-        >
-          <Text
-            style={[styles.dateFilterText, selectedTimePeriod === 7 && styles.dateFilterTextActive]}
-          >
-            7 Days
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.dateFilterButton,
-            styles.timeRangeButton,
-            selectedTimePeriod === 30 && styles.timeRangeButtonActive,
-          ]}
-          onPress={() => handleTimePeriodChange(30)}
-        >
-          <Text
-            style={[
-              styles.dateFilterText,
-              selectedTimePeriod === 30 && styles.dateFilterTextActive,
-            ]}
-          >
-            30 Days
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.dateFilterButton,
-            styles.timeRangeButton,
-            selectedTimePeriod === 90 && styles.timeRangeButtonActive,
-          ]}
-          onPress={() => handleTimePeriodChange(90)}
-        >
-          <Text
-            style={[
-              styles.dateFilterText,
-              selectedTimePeriod === 90 && styles.dateFilterTextActive,
-            ]}
-          >
-            90 Days
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
     </View>
   );
 
@@ -431,22 +402,26 @@ export default function TransactionsScreen() {
   return (
     <View style={styles.container}>
       {renderSearchBar()}
-      {renderDateFilter()}
       {renderBankFilter()}
       {renderCategoryFilters()}
 
       <SectionList
-        sections={transactionGroups}
+        sections={paginatedGroups}
         keyExtractor={(item) => item.id}
         renderItem={renderTransaction}
         renderSectionHeader={renderSectionHeader}
         refreshControl={
           <RefreshControl
             refreshing={loading.transactions}
-            onRefresh={() => handleFetch(filters)}
+            onRefresh={() => {
+              setPage(1);
+              handleFetch(filters);
+            }}
             colors={[colors.primary]}
           />
         }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
         stickySectionHeadersEnabled
         contentContainerStyle={styles.listContent}
       />
@@ -494,38 +469,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     color: colors.text.primary,
   },
-  dateFilterContainer: {
-    paddingVertical: 10,
-    backgroundColor: colors.surface,
-  },
   filterContainer: {
     paddingVertical: 10,
     paddingHorizontal: 5,
     backgroundColor: colors.surface,
     marginBottom: 1,
-    minHeight: 56, // Add minimum height to prevent layout shift
+    minHeight: 56,
     justifyContent: 'center',
-  },
-  dateFilterButton: {
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    marginHorizontal: 5,
-    borderRadius: 20,
-    backgroundColor: colors.background,
-  },
-  timeRangeButton: {
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  timeRangeButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  dateFilterText: {
-    color: colors.text.primary,
-  },
-  dateFilterTextActive: {
-    color: colors.text.inverse,
   },
   filterButton: {
     paddingHorizontal: 15,
