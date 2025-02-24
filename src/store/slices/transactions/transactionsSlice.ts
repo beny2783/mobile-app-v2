@@ -316,7 +316,6 @@ const transactionsSlice = createSlice({
           if (!t) return;
           if (t.merchant_name === merchantPattern || t.description === merchantPattern) {
             t.transaction_category = category;
-            t.transaction_type = category; // Also update transaction_type as it's used for categorization
           }
         });
       })

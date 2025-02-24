@@ -127,14 +127,8 @@ export class SupabaseTransactionRepository implements TransactionRepository {
       }
     }
 
-    // Don't use CREDIT/DEBIT as categories as they don't indicate the transaction purpose
-    const defaultCategory = 'Uncategorized';
-    const transactionType = transaction.transaction_type?.toUpperCase();
-    if (!transactionType || transactionType === 'CREDIT' || transactionType === 'DEBIT') {
-      return defaultCategory;
-    }
-
-    return transaction.transaction_type || defaultCategory;
+    // Return 'Uncategorized' if no pattern matches
+    return 'Uncategorized';
   }
 
   async getTransactions(filters: TransactionFilters): Promise<DatabaseTransaction[]> {
@@ -322,7 +316,6 @@ export class SupabaseTransactionRepository implements TransactionRepository {
           .from('transactions')
           .update({
             transaction_category: category,
-            transaction_type: category,
           })
           .eq('user_id', user.id)
           .eq('merchant_name', merchantPattern)
@@ -342,7 +335,6 @@ export class SupabaseTransactionRepository implements TransactionRepository {
           .from('transactions')
           .update({
             transaction_category: category,
-            transaction_type: category,
           })
           .eq('user_id', user.id)
           .eq('description', merchantPattern)

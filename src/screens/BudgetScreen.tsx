@@ -71,8 +71,8 @@ export default function BudgetScreen() {
     }
 
     try {
-      console.log('Creating new target:', { ...target, userId: user.id });
-      await createTarget({ ...target, user_id: user.id });
+      console.log('Creating new target:', { ...target });
+      await createTarget(target);
       setIsSettingModalVisible(false);
       console.log('Target created, refreshing budgets...');
       await fetchTargets(user.id);
@@ -146,36 +146,31 @@ export default function BudgetScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView>
-        {/* Header Section */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Budget Targets</Text>
-          <TouchableOpacity style={styles.addButton} onPress={() => setIsSettingModalVisible(true)}>
-            <Ionicons name="add-circle-outline" size={24} color={colors.text.primary} />
-          </TouchableOpacity>
+      {/* Header Section */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Budget Targets</Text>
+        <TouchableOpacity style={styles.addButton} onPress={() => setIsSettingModalVisible(true)}>
+          <Ionicons name="add-circle-outline" size={24} color={colors.text.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Empty State or Category Budget List */}
+      {!categoryTargets || categoryTargets.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>No budget targets set</Text>
+          <Text style={styles.emptyStateSubtext}>
+            Tap the + button to create your first budget target
+          </Text>
         </View>
-
-        {/* Empty State */}
-        {(!categoryTargets || categoryTargets.length === 0) && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No budget targets set</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Tap the + button to create your first budget target
-            </Text>
-          </View>
-        )}
-
-        {/* Category Budget List */}
-        {categoryTargets && categoryTargets.length > 0 && (
-          <CategoryBudgetList
-            categoryTargets={categoryTargets}
-            onCategoryPress={(category) => {
-              setSelectedCategory(category);
-              setIsDetailModalVisible(true);
-            }}
-          />
-        )}
-      </ScrollView>
+      ) : (
+        <CategoryBudgetList
+          categoryTargets={categoryTargets}
+          onCategoryPress={(category) => {
+            setSelectedCategory(category);
+            setIsDetailModalVisible(true);
+          }}
+        />
+      )}
 
       {/* Budget Setting Modal */}
       <BudgetSettingModal

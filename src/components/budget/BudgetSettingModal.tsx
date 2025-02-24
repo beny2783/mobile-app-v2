@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,7 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
   onClose,
   onSubmit,
 }) => {
-  const { categories, loading } = useTransactions();
+  const { categories, loading, refreshCategories } = useTransactions();
   const { loading: isBudgetLoading } = useBudget();
   const isCategoriesLoading = loading.categories;
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -38,6 +38,12 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
   const [period, setPeriod] = useState<TargetPeriod>('monthly');
   const [color, setColor] = useState('#4CAF50');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isVisible) {
+      refreshCategories();
+    }
+  }, [isVisible, refreshCategories]);
 
   const periodOptions: { label: string; value: TargetPeriod }[] = [
     { label: 'Daily', value: 'daily' },
@@ -100,6 +106,97 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
     </TouchableOpacity>
   );
 
+  const renderFormContent = () => (
+    <>
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Category</Text>
+        {isCategoriesLoading ? (
+          <Text style={styles.loadingText}>Loading categories...</Text>
+        ) : (
+          <View style={styles.categoryList}>
+            {categories.map((category) => (
+              <TouchableOpacity
+                key={category}
+                style={[
+                  styles.categoryItem,
+                  selectedCategory === category && styles.selectedCategoryItem,
+                ]}
+                onPress={() => setSelectedCategory(category)}
+              >
+                <Text
+                  style={[
+                    styles.categoryText,
+                    selectedCategory === category && styles.selectedCategoryText,
+                  ]}
+                >
+                  {category}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Period</Text>
+        <View style={styles.periodContainer}>
+          {periodOptions.map((option) => (
+            <TouchableOpacity
+              key={option.value}
+              style={[styles.periodOption, period === option.value && styles.selectedPeriodOption]}
+              onPress={() => setPeriod(option.value)}
+            >
+              <Text
+                style={[styles.periodText, period === option.value && styles.selectedPeriodText]}
+              >
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Target Amount (£)</Text>
+        <TextInput
+          style={styles.input}
+          value={targetLimit}
+          onChangeText={setTargetLimit}
+          keyboardType="decimal-pad"
+          placeholder="0.00"
+          placeholderTextColor={colors.text.secondary}
+        />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Color</Text>
+        <View style={styles.colorPicker}>
+          <ColorPicker
+            color={color}
+            onColorChange={setColor}
+            thumbSize={30}
+            sliderSize={20}
+            noSnap={true}
+            row={false}
+          />
+        </View>
+      </View>
+
+      <TouchableOpacity
+        style={[
+          styles.submitButton,
+          (isSubmitting || isBudgetLoading) && styles.submitButtonDisabled,
+        ]}
+        onPress={handleSubmit}
+        disabled={isSubmitting || isBudgetLoading}
+      >
+        <Text style={styles.submitButtonText}>
+          {isSubmitting ? 'Creating...' : 'Create Budget Target'}
+        </Text>
+      </TouchableOpacity>
+    </>
+  );
+
   return (
     <Modal
       visible={isVisible}
@@ -116,87 +213,12 @@ export const BudgetSettingModal: React.FC<BudgetSettingModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Category</Text>
-              {isCategoriesLoading ? (
-                <Text style={styles.loadingText}>Loading categories...</Text>
-              ) : (
-                <View style={styles.categoryList}>
-                  <FlatList
-                    data={categories}
-                    renderItem={renderCategoryItem}
-                    keyExtractor={(item) => item}
-                    scrollEnabled={true}
-                    nestedScrollEnabled={true}
-                  />
-                </View>
-              )}
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Period</Text>
-              <View style={styles.periodContainer}>
-                {periodOptions.map((option) => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.periodOption,
-                      period === option.value && styles.selectedPeriodOption,
-                    ]}
-                    onPress={() => setPeriod(option.value)}
-                  >
-                    <Text
-                      style={[
-                        styles.periodText,
-                        period === option.value && styles.selectedPeriodText,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Target Amount (£)</Text>
-              <TextInput
-                style={styles.input}
-                value={targetLimit}
-                onChangeText={setTargetLimit}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={colors.text.secondary}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Color</Text>
-              <View style={styles.colorPicker}>
-                <ColorPicker
-                  color={color}
-                  onColorChange={setColor}
-                  thumbSize={30}
-                  sliderSize={20}
-                  noSnap={true}
-                  row={false}
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                (isSubmitting || isBudgetLoading) && styles.submitButtonDisabled,
-              ]}
-              onPress={handleSubmit}
-              disabled={isSubmitting || isBudgetLoading}
-            >
-              <Text style={styles.submitButtonText}>
-                {isSubmitting ? 'Creating...' : 'Create Budget Target'}
-              </Text>
-            </TouchableOpacity>
+          <ScrollView
+            style={styles.formScrollView}
+            contentContainerStyle={styles.formContentContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            {renderFormContent()}
           </ScrollView>
         </View>
       </View>
@@ -231,7 +253,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text.primary,
   },
-  form: {
+  formScrollView: {
+    maxHeight: '80%',
+  },
+  formContentContainer: {
     padding: 20,
   },
   inputGroup: {
@@ -272,22 +297,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   categoryList: {
-    maxHeight: 200,
-    borderRadius: 8,
-    overflow: 'hidden',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   categoryItem: {
-    padding: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 8,
-    marginBottom: 8,
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   selectedCategoryItem: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   categoryText: {
     color: colors.text.primary,
-    fontSize: 16,
+    fontSize: 14,
   },
   selectedCategoryText: {
     color: colors.text.inverse,
@@ -295,14 +323,14 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: colors.text.secondary,
+    fontSize: 14,
     textAlign: 'center',
-    padding: 12,
+    marginTop: 8,
   },
   periodContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 8,
   },
   periodOption: {
     paddingHorizontal: 16,
