@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Text, ScrollView, RefreshControl } from 'react-native';
+import { View, StyleSheet, Text, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { NotificationTest } from '../components/NotificationTest';
 import HomeHeader from '../components/HomeHeader';
 import SummaryCards from '../components/SummaryCards';
 import BankCard from '../components/BankCard';
@@ -12,6 +11,10 @@ import { useAccounts } from '../store/slices/accounts/hooks';
 import { colors } from '../constants/theme';
 import * as WebBrowser from 'expo-web-browser';
 import { useServices } from '../contexts/ServiceContext';
+import { RecentTransactions } from '../components/RecentTransactions';
+import { useTransactions } from '../store/slices/transactions/hooks';
+import { CategoriesModal } from '../components/CategoriesModal';
+import { Ionicons } from '@expo/vector-icons';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -20,6 +23,7 @@ export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const { trueLayerService } = useServices();
   const [connecting, setConnecting] = useState(false);
+  const [isCategoriesModalVisible, setIsCategoriesModalVisible] = useState(false);
 
   const {
     connections,
@@ -29,6 +33,8 @@ export default function HomeScreen() {
     loadAccountsByConnection,
     totalBalance,
   } = useAccounts();
+
+  const { fetch: fetchTransactions } = useTransactions();
 
   // Load connections and their accounts on mount and when connections change
   useEffect(() => {
@@ -43,20 +49,29 @@ export default function HomeScreen() {
     loadAllData();
   }, [loadConnections]);
 
-  // Load accounts whenever connections change
+  // Load accounts and transactions whenever connections change
   useEffect(() => {
-    const loadAccounts = async () => {
+    const loadData = async () => {
       if (connections.length > 0) {
         try {
           console.log(`📊 Loading accounts for ${connections.length} connections...`);
           await Promise.all(connections.map((conn) => loadAccountsByConnection(conn.id)));
+
+          // Load transactions for all connections
+          console.log('💰 Loading transactions...');
+          await fetchTransactions({
+            dateRange: {
+              from: new Date(0).toISOString(), // Start from Unix epoch
+              to: new Date().toISOString(), // Up to now
+            },
+          });
         } catch (error) {
-          console.error('Failed to load accounts:', error);
+          console.error('Failed to load data:', error);
         }
       }
     };
-    loadAccounts();
-  }, [connections, loadAccountsByConnection]);
+    loadData();
+  }, [connections, loadAccountsByConnection, fetchTransactions]);
 
   const handleSearchPress = () => {
     // TODO: Implement search functionality
@@ -105,7 +120,17 @@ export default function HomeScreen() {
   const handleRefresh = async () => {
     try {
       await loadConnections();
-      await Promise.all(connections.map((conn) => loadAccountsByConnection(conn.id)));
+      if (connections.length > 0) {
+        await Promise.all([
+          ...connections.map((conn) => loadAccountsByConnection(conn.id)),
+          fetchTransactions({
+            dateRange: {
+              from: new Date(0).toISOString(),
+              to: new Date().toISOString(),
+            },
+          }),
+        ]);
+      }
     } catch (error) {
       console.error('Failed to refresh data:', error);
     }
@@ -159,10 +184,27 @@ export default function HomeScreen() {
           </View>
         )}
 
-        <View style={styles.notificationTestContainer}>
-          <NotificationTest />
-        </View>
+        {connections.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Transactions</Text>
+              <TouchableOpacity
+                style={styles.categoriesButton}
+                onPress={() => setIsCategoriesModalVisible(true)}
+              >
+                <Ionicons name="pricetags" size={20} color={colors.primary} />
+                <Text style={styles.categoriesButtonText}>Categories</Text>
+              </TouchableOpacity>
+            </View>
+            <RecentTransactions />
+          </>
+        )}
       </ScrollView>
+
+      <CategoriesModal
+        isVisible={isCategoriesModalVisible}
+        onClose={() => setIsCategoriesModalVisible(false)}
+      />
     </View>
   );
 }
@@ -200,8 +242,30 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
     fontSize: 14,
   },
-  notificationTestContainer: {
-    marginTop: 20,
-    paddingHorizontal: 20,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  categoriesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+  },
+  categoriesButtonText: {
+    marginLeft: 4,
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
   },
 });

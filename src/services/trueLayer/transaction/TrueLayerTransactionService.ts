@@ -18,18 +18,53 @@ export class TrueLayerTransactionService implements ITrueLayerTransactionService
   }
 
   async processTransactions(
-    transactions: TrueLayerTransaction[],
-    connectionId: string
-  ): Promise<ProcessedTransaction[]> {
-    return transactions.map((transaction) => ({
-      ...transaction,
-      connection_id: transaction.connection_id || connectionId,
-      id: transaction.id || this.generateTransactionId(transaction, connectionId),
-      processed_at: new Date().toISOString(),
-    }));
+    transactions: any[],
+    connectionId?: string
+  ): Promise<DatabaseTransaction[]> {
+    console.log('🔄 Processing transactions:', {
+      count: transactions.length,
+      connectionId,
+      sampleCategories: transactions.slice(0, 3).map((t) => ({
+        id: t.id,
+        category: t.category || 'Uncategorized',
+        description: t.description,
+      })),
+    });
+
+    const processedTransactions = transactions.map((t) => {
+      const txnId = connectionId ? this.generateTransactionId(t, connectionId) : t.id;
+
+      return {
+        ...t,
+        connection_id: connectionId || t.connection_id,
+        id: t.id || txnId,
+        transaction_category: t.category || 'Uncategorized',
+        user_id: t.user_id,
+        transaction_id: t.transaction_id || t.id,
+        transaction_type: t.type || 'unknown',
+        timestamp: t.timestamp,
+        description: t.description || '',
+        amount: t.amount,
+        currency: t.currency,
+        merchant_name: t.merchant_name || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    console.log('✅ Processed transactions:', {
+      count: processedTransactions.length,
+      sampleProcessed: processedTransactions.slice(0, 3).map((t) => ({
+        id: t.id,
+        category: t.transaction_category,
+        description: t.description,
+      })),
+    });
+
+    return processedTransactions;
   }
 
-  private generateTransactionId(transaction: TrueLayerTransaction, connectionId: string): string {
+  private generateTransactionId(transaction: any, connectionId: string): string {
     return `${connectionId}_${new Date(transaction.timestamp).getTime()}`;
   }
 

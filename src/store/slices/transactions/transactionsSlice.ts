@@ -376,6 +376,15 @@ export const selectMerchantCategories = createSelector(
 export const selectFilteredTransactions = createSelector(
   [selectAllTransactions, selectTransactionFilters],
   (transactions, filters) => {
+    console.log('🔍 Filtering transactions:', {
+      totalTransactions: transactions.length,
+      categoryFilter: filters.category,
+      transactionCategories: transactions.map((t) => ({
+        id: t.id,
+        category: t.transaction_category,
+      })),
+    });
+
     return transactions.filter((t: Transaction) => {
       const matchesSearch =
         !filters.searchQuery ||
@@ -383,6 +392,14 @@ export const selectFilteredTransactions = createSelector(
         (t.merchant_name?.toLowerCase() || '').includes(filters.searchQuery.toLowerCase());
 
       const matchesCategory = !filters.category || t.transaction_category === filters.category;
+
+      console.log('🏷️ Transaction category check:', {
+        transactionId: t.id,
+        transactionCategory: t.transaction_category,
+        filterCategory: filters.category,
+        matches: matchesCategory,
+      });
+
       const matchesBank = !filters.bankId || t.connection_id === filters.bankId;
       const matchesDateRange =
         new Date(t.timestamp) >= new Date(filters.dateRange.from) &&

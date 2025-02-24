@@ -147,15 +147,12 @@ export class SupabaseTransactionRepository implements TransactionRepository {
         .eq('user_id', user.id) // Filter by user_id
         .order('timestamp', { ascending: false });
 
-      // Apply filters
+      // Apply non-category filters first
       if (filters.fromDate) {
         query = query.gte('timestamp', filters.fromDate.toISOString());
       }
       if (filters.toDate) {
         query = query.lte('timestamp', filters.toDate.toISOString());
-      }
-      if (filters.category) {
-        query = query.eq('transaction_category', filters.category);
       }
       if (filters.connectionId) {
         query = query.eq('connection_id', filters.connectionId);
@@ -182,8 +179,13 @@ export class SupabaseTransactionRepository implements TransactionRepository {
         transaction_category: this.categorizeTransaction(t),
       }));
 
+      // Apply category filter in memory after categorization
+      const filteredTransactions = filters.category
+        ? categorizedTransactions.filter((t) => t.transaction_category === filters.category)
+        : categorizedTransactions;
+
       // Log summary of categorization
-      const categoryCount = categorizedTransactions.reduce(
+      const categoryCount = filteredTransactions.reduce(
         (acc, t) => {
           acc[t.transaction_category] = (acc[t.transaction_category] || 0) + 1;
           return acc;
@@ -198,8 +200,8 @@ export class SupabaseTransactionRepository implements TransactionRepository {
           .join(', ')
       );
 
-      console.log(`[TransactionRepository] Found ${categorizedTransactions.length} transactions`);
-      return categorizedTransactions;
+      console.log(`[TransactionRepository] Found ${filteredTransactions.length} transactions`);
+      return filteredTransactions;
     } catch (error) {
       throw this.handleError(error);
     }
@@ -377,22 +379,42 @@ export class SupabaseTransactionRepository implements TransactionRepository {
         toDate
       );
 
+      console.log('📥 Raw transactions from bank:', {
+        count: transactions.length,
+        sampleCategories: transactions.slice(0, 3).map((t) => ({
+          id: t.id,
+          rawCategory: t.transaction_category,
+          description: t.description,
+        })),
+      });
+
       // Convert API transactions to database transactions
-      const dbTransactions: DatabaseTransaction[] = transactions.map((t) => ({
-        id: t.id,
-        user_id: user.id,
-        connection_id: connectionId,
-        amount: t.amount,
-        currency: t.currency,
-        description: t.description,
-        merchant_name: t.merchant_name,
-        timestamp: t.timestamp,
-        transaction_type: t.transaction_type,
-        transaction_category: t.transaction_category,
-        scheduled_date: undefined,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
+      const dbTransactions: DatabaseTransaction[] = transactions.map((t) => {
+        const transaction: DatabaseTransaction = {
+          id: t.id,
+          transaction_id: t.id,
+          user_id: user.id,
+          connection_id: connectionId,
+          amount: t.amount,
+          currency: t.currency,
+          description: t.description,
+          merchant_name: t.merchant_name,
+          timestamp: t.timestamp,
+          transaction_type: t.transaction_type,
+          transaction_category: t.transaction_category || 'Uncategorized',
+          scheduled_date: undefined,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        console.log('🔄 Mapping transaction:', {
+          id: transaction.id,
+          rawCategory: t.transaction_category,
+          mappedCategory: transaction.transaction_category,
+        });
+
+        return transaction;
+      });
 
       await this.storeTransactions(dbTransactions);
 
